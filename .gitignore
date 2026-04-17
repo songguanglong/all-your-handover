@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/
+*.log
+.env
+.env.local
+*.exe
+*.pkg
+.DS_Store
+thumbs.db
