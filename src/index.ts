@@ -1,25 +1,59 @@
+import { App, getApp } from './app';
 import { startServer } from './server';
-import { GitManager } from './services/git-manager';
-import { initDirectories } from './utils/init';
-import { registerService } from './utils/service';
+import { logger } from './utils/logger';
+import { registerService, unregisterService } from './utils/service';
+
+function parseArgs(args: string[]): { port: number; dataDir: string; command?: string } {
+  let port = parseInt(process.env.PORT || '3000', 10);
+  let dataDir = process.env.DATA_DIR || './data';
+  let command: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case '--port': {
+        const val = args[i + 1];
+        if (val && /^\d+$/.test(val)) {
+          port = parseInt(val, 10);
+          i++;
+        }
+        break;
+      }
+      case '--data': {
+        const val = args[i + 1];
+        if (val) {
+          dataDir = val;
+          i++;
+        }
+        break;
+      }
+      case 'uninstall':
+        command = 'uninstall';
+        break;
+    }
+  }
+
+  return { port, dataDir, command };
+}
 
 async function main() {
-  // 初始化数据目录
-  await initDirectories();
+  const { port, dataDir, command } = parseArgs(process.argv.slice(2));
 
-  // 初始化 Git
-  const git = new GitManager(process.env.DATA_DIR || './data');
-  await git.init();
+  if (command === 'uninstall') {
+    await unregisterService();
+    logger.info('服务已卸载');
+    return;
+  }
 
-  // 注册系统服务（可选，需管理员权限）
-  await registerService();
+  process.env.DATA_DIR = dataDir;
 
-  // 启动 Web 服务
-  const port = parseInt(process.env.PORT || '3000', 10);
+  const app = new App();
+  await app.initialize();
+
+  await registerService(dataDir);
   await startServer(port);
 }
 
 main().catch((err) => {
-  console.error('启动失败:', err);
+  logger.error(`启动失败: ${err}`);
   process.exit(1);
 });

@@ -7,4 +7,5 @@ data/
 *.exe
 *.pkg
 .DS_Store
-thumbs.dbCLAUDE.md
+thumbs.db
+CLAUDE.md

@@ -21,13 +21,23 @@ export class GitManager {
     this.pendingMessages.push(message);
     if (this.commitTimer) clearTimeout(this.commitTimer);
     this.commitTimer = setTimeout(async () => {
-      await this.repo.add('.');
-      const msg = this.pendingMessages.length === 1
-        ? this.pendingMessages[0]
-        : `${this.pendingMessages[0]} 等 ${this.pendingMessages.length} 条操作`;
-      await this.repo.commit(msg);
+      const messages = [...this.pendingMessages];
       this.pendingMessages = [];
       this.commitTimer = null;
+      try {
+        await this.repo.add('.');
+        const msg = messages.length === 1
+          ? messages[0]
+          : `${messages[0]} 等 ${messages.length} 条操作`;
+        try {
+          await this.repo.commit(msg);
+        } catch {
+          // No changes to commit — not an error
+        }
+      } catch (err) {
+        // Git errors are non-critical — don't block the application
+        console.error(`Git auto-commit failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }, 30000);
   }
 }

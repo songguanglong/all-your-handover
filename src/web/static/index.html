@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>All Your Handover - 管理后台</title>
+  <link rel="stylesheet" href="/admin/css/style.css">
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="sidebar-header">
+        <h1>🤝 All Your Handover</h1>
+      </div>
+      <ul class="nav-list">
+        <li><a href="#wizard" class="nav-link" data-page="wizard">初始化向导</a></li>
+        <li><a href="#llm" class="nav-link" data-page="llm">LLM 设置</a></li>
+        <li><a href="#platforms" class="nav-link" data-page="platforms">平台配置</a></li>
+        <li><a href="#channels" class="nav-link" data-page="channels">渠道管理</a></li>
+        <li><a href="#template" class="nav-link" data-page="template">模版编辑</a></li>
+        <li><a href="#handovers" class="nav-link" data-page="handovers">历史查询</a></li>
+        <li><a href="#monitoring" class="nav-link" data-page="monitoring">运行监控</a></li>
+      </ul>
+    </nav>
+    <main class="content" id="main-content">
+      <div class="loading">加载中...</div>
+    </main>
+  </div>
+  <script src="/admin/js/api.js"></script>
+  <script src="/admin/js/app.js"></script>
+</body>
+</html>

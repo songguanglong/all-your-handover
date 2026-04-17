@@ -4,26 +4,28 @@ import { registerWebhookRoutes } from './channels/webhook';
 import { registerAdminRoutes } from './web/admin';
 
 export async function startServer(port: number): Promise<void> {
-  const app = express();
+  const server = express();
 
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // Limit request body size to 10MB
+  server.use(express.json({ limit: '10mb' }));
+  server.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-  // 静态文件（Web 管理后台前端）
-  app.use('/admin', express.static(path.join(__dirname, '../web/static')));
+  // Static files (Web admin frontend)
+  const staticDir = path.join(__dirname, 'web/static');
+  server.use('/admin', express.static(staticDir));
 
-  // 飞书 Webhook
-  registerWebhookRoutes(app);
+  // Feishu Webhook
+  registerWebhookRoutes(server);
 
-  // 管理后台 API
-  registerAdminRoutes(app);
+  // Admin API
+  registerAdminRoutes(server);
 
-  // 健康检查
-  app.get('/health', (_req, res) => {
+  // Health check
+  server.get('/health', (_req, res) => {
     res.json({ status: 'ok', version: process.env.npm_package_version || '0.1.0' });
   });
 
-  app.listen(port, () => {
+  server.listen(port, () => {
     console.log(`All Your Handover 已启动: http://localhost:${port}`);
     console.log(`管理后台: http://localhost:${port}/admin`);
   });

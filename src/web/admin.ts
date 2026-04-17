@@ -1,29 +1,52 @@
-import { Application } from 'express';
+import type { Request, Response, NextFunction, Router } from 'express';
+import { registerLLMRoutes } from './admin-llm';
+import { registerPlatformRoutes } from './admin-platforms';
+import { registerChannelRoutes } from './admin-channels';
+import { registerTemplateRoutes } from './admin-template';
+import { registerHandoverRoutes } from './admin-handovers';
+import { registerMonitoringRoutes } from './admin-monitoring';
+import { timingSafeEqual } from 'crypto';
 
-export function registerAdminRoutes(app: Application): void {
+function getAdminToken(): string | null {
+  return process.env.ADMIN_TOKEN || null;
+}
+
+function isAdminAuthEnabled(): boolean {
+  return !!process.env.ADMIN_TOKEN;
+}
+
+function adminAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+  if (!isAdminAuthEnabled()) {
+    return next();
+  }
+
+  const token = getAdminToken()!;
+  const auth = req.headers.authorization;
+
+  if (!auth || !auth.startsWith('Bearer ')) {
+    res.status(401).json({ code: -1, message: 'Authentication required' });
+    return;
+  }
+
+  const provided = auth.slice(7);
+  if (provided.length !== token.length || !timingSafeEqual(Buffer.from(provided), Buffer.from(token))) {
+    res.status(401).json({ code: -1, message: 'Invalid token' });
+    return;
+  }
+
+  next();
+}
+
+export function registerAdminRoutes(router: Router): void {
   const prefix = '/api/admin';
 
-  // LLM Provider 管理
-  // GET/POST/PUT/DELETE /api/admin/llm-providers
+  // Apply auth middleware to all admin routes
+  router.use(prefix, adminAuthMiddleware);
 
-  // 平台配置
-  // GET/PUT /api/admin/platforms/:type
-
-  // 渠道管理
-  // GET/POST/PUT/DELETE /api/admin/channels
-
-  // 交接模版
-  // GET/PUT /api/admin/channels/:code/template
-
-  // 历史查询
-  // GET /api/admin/handovers
-
-  // 运行监控
-  // GET /api/admin/status
-  // GET /api/admin/llm-queue
-
-  // TODO: 实现上述路由
-  app.get(`${prefix}/status`, (_req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime() });
-  });
+  registerLLMRoutes(router, prefix);
+  registerPlatformRoutes(router, prefix);
+  registerChannelRoutes(router, prefix);
+  registerTemplateRoutes(router, prefix);
+  registerHandoverRoutes(router, prefix);
+  registerMonitoringRoutes(router, prefix);
 }

@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  all-your-handover:
+    build: .
+    container_name: all-your-handover
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      - PORT=3000
+    restart: unless-stopped

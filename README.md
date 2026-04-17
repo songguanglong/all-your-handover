@@ -36,4 +36,4 @@ npm start
 
 ## License
 
-MIT
+All rights reserved.

@@ -1,13 +1,13 @@
 import fs from 'fs/promises';
 import path from 'path';
-
-const DATA_DIR = process.env.DATA_DIR || './data';
+import { getDataDir } from './data-dir';
 
 export async function initDirectories(): Promise<void> {
+  const dataDir = getDataDir();
   const dirs = [
-    path.join(DATA_DIR, 'config'),
-    path.join(DATA_DIR, 'channels'),
-    path.join(DATA_DIR, 'logs'),
+    path.join(dataDir, 'config'),
+    path.join(dataDir, 'channels'),
+    path.join(dataDir, 'logs'),
   ];
 
   for (const dir of dirs) {
@@ -15,18 +15,18 @@ export async function initDirectories(): Promise<void> {
   }
 
   // 检测首次运行
-  const configExists = await fs.access(path.join(DATA_DIR, 'config/channels.json'))
+  const configExists = await fs.access(path.join(dataDir, 'config/channels.json'))
     .then(() => true)
     .catch(() => false);
 
   if (!configExists) {
     // 首次运行，创建默认配置
     await fs.writeFile(
-      path.join(DATA_DIR, 'config/channels.json'),
+      path.join(dataDir, 'config/channels.json'),
       JSON.stringify({ platforms: {}, channels: [] }, null, 2)
     );
     await fs.writeFile(
-      path.join(DATA_DIR, 'config/llm-providers.json'),
+      path.join(dataDir, 'config/llm-providers.json'),
       JSON.stringify({ providers: [], defaultProviderId: null }, null, 2)
     );
   }

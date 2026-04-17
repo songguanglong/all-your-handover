@@ -1,7 +1,7 @@
 # All Your Handover - 产品设计文档
 
-> **版本**：v1.3
-> **日期**：2026-04-17
+> **版本**：v1.4
+> **日期**：2026-04-18
 > **状态**：开发就绪
 > **项目名**：All Your Handover
 > **仓库/包名**：all-your-handover
@@ -319,7 +319,8 @@ LLM 按模版整理当前草稿生成交接单
 data/
 ├── config/
 │   ├── llm-providers.json    # LLM Provider 配置（Web 后台管理）
-│   └── channels.json          # 渠道配置（多群合并配置）
+│   ├── channels.json          # 渠道配置（多群合并配置）
+│   └── .encryption-key        # 自动生成的 AES-256 加密密钥（丢失将导致 API Key 不可恢复）
 ├── channels/                  # 按渠道 code 组织数据
 │   └── qiantai/               # code: "qiantai"（创建渠道时指定，仅英文+数字）
 │       ├── channel.json        # 渠道运行时状态（非配置，不与 channels.json 重复）
@@ -449,30 +450,30 @@ data/
 
 > **渠道级别**：每个渠道独立配置模版，不同群可用不同模版（前台群关注房态钱款，客房群关注清洁维修）。新建渠道时自动生成默认模版，可通过 Web 后台编辑。
 >
-> **格式说明**：自由格式 Markdown 模版，LLM 理解模版结构后按此格式生成交接内容。不需要结构化 JSON 定义字段。
+> **格式说明**：使用 `{{placeholder}}` 占位符模版，LLM 根据 placeholder 名称填充对应分类的内容。
 
 ```markdown
 # 交接模版
 
-## 固定项
-- 房态核对
-- 钱款交接
-- 待办事项
-- 特殊情况说明
+## 重要事项
+{{important}}
 
-## 格式要求
-- 每项必须有标题和内容
-- 金额需标注币种
-- 时间格式：YYYY-MM-DD HH:mm
+## 一般事项
+{{normal}}
+
+## 跟进事项
+{{follow_up}}
 ```
 
 ### 4.5 交接记录（channels/qiantai/handovers/2026-04/2026-04-01_ou_xxx_ou_yyy.md）
 
 > **文件命名**：`{YYYY-MM-DD}_{交班人channel_user_id}_{接班人channel_user_id}.md`（requireAccept=false 时接班人 ID 为 `archived`）。中文姓名保留在文件内容的 frontmatter 中，文件名仅用英文+数字+下划线。
+>
+> **记录 ID**：`hv_{UUID}` 格式（如 `hv_a1b2c3d4e5f6...`），使用 UUID 而非自增序号以避免并发冲突。
 
 ```markdown
 ---
-id: hv_20260401_001
+id: hv_a1b2c3d4e5f6
 channel_code: qiantai
 channel_name: 前台群
 chat_id: oc_xxx
@@ -919,20 +920,22 @@ class LLMProviderFactory {
 ```
 POST   /api/admin/llm-providers          添加 Provider
 PUT    /api/admin/llm-providers/:id       更新 Provider
-POST   /api/admin/llm-providers/:id/set-default  设为默认
-POST   /api/admin/llm-providers/:id/toggle  启用/禁用
+PUT    /api/admin/llm-providers/:id/default  设为默认
+PUT    /api/admin/llm-providers/:id/toggle  启用/禁用
 DELETE /api/admin/llm-providers/:id       删除 Provider
 ```
 
-配置存储在 `data/config/llm-providers.json`，通过 Web 后台管理，不写死在代码中。
+配置存储在 `data/config/llm-providers.json`，通过 Web 后台管理，不写死在代码中。GET 响应中 API Key 以 `***` 掩码显示。
 
 ### 6.6 平台配置 API
 
 ```
-GET    /api/admin/platforms/:type          获取平台配置（如 feishu）
+GET    /api/admin/platforms/:type          获取平台配置（如 feishu），密钥掩码显示
 PUT    /api/admin/platforms/:type          更新平台配置（App ID/Secret）
 POST   /api/admin/platforms/:type/test     测试平台连接（验证 App 凭证有效性）
 ```
+
+平台密钥（appSecret、verificationToken）均使用 AES-256-GCM 加密存储。
 
 ### 6.7 渠道管理 API
 
@@ -941,15 +944,17 @@ GET    /api/admin/channels               列出所有渠道
 POST   /api/admin/channels               添加渠道（code + name + chatId + type + settings）
 PUT    /api/admin/channels/:code          更新渠道配置（name/chatId/settings）
 DELETE /api/admin/channels/:code          删除渠道
-POST   /api/admin/channels/:code/toggle   启用/禁用渠道
+PUT    /api/admin/channels/:code/toggle   启用/禁用渠道
 ```
+
+渠道 code 限制为 1-50 字符的字母/数字/下划线，名称限制 100 字符，chatId 限制 200 字符。
 
 ### 6.8 交接模版 API
 
 ```
 GET    /api/admin/channels/:code/template     获取渠道模版
 PUT    /api/admin/channels/:code/template     更新渠道模版
-POST   /api/admin/channels/:code/template/reset  重置为默认模版
+PUT    /api/admin/channels/:code/template/reset  重置为默认模版
 ```
 
 ### 6.9 历史查询 API
@@ -957,21 +962,23 @@ POST   /api/admin/channels/:code/template/reset  重置为默认模版
 ```
 GET    /api/admin/handovers                   查询交接记录
        ?channelCode=qiantai                   按渠道筛选
-       &dateFrom=2026-04-01                   起始日期
-       &dateTo=2026-04-30                     截止日期
+       &startDate=2026-04-01                  起始日期
+       &endDate=2026-04-30                    截止日期
        &keyword=空调                           关键词搜索
-       &sender=ou_xxx                         按交班人筛选
-GET    /api/admin/handovers/:channelCode/:filename  获取交接记录详情
+       &page=1                                页码（默认 1）
+       &pageSize=20                           每页条数（默认 20，最大 1000）
+GET    /api/admin/handovers/:channelCode/:month/:file  获取交接记录详情
 ```
 
-搜索方式：遍历 `data/channels/{code}/handovers/` 下的 Markdown 文件，按 frontmatter 字段和正文内容匹配。Phase 2 引入 SQLite 索引后改为数据库查询。
+搜索方式：遍历 `data/channels/{code}/handovers/` 下的 Markdown 文件，按 frontmatter 字段和正文内容匹配。详情 API 路径参数经过严格校验防止路径遍历。Phase 2 引入 SQLite 索引后改为数据库查询。
 
 ### 6.10 运行监控 API
 
 ```
-GET    /api/admin/status                      系统状态（运行时长、渠道数、消息处理数）
+GET    /api/admin/status                      系统状态（运行时长、渠道数、Provider 数、首次运行标记）
 GET    /api/admin/llm-queue                   LLM 队列状态（各渠道积压数、活跃调用数）
-GET    /api/admin/logs                        最近运行日志
+GET    /api/admin/logs                        最近运行日志（?lines=100，最大 1000）
+GET    /health                                健康检查（返回 status + version）
 ```
 
 ---
@@ -981,10 +988,11 @@ GET    /api/admin/logs                        最近运行日志
 | 角色 | 权限 | 说明 |
 |------|------|------|
 | 群聊成员 | 发送随手记、@自己 交班/接班、查看群内消息卡片 | 无需登录系统 |
-| 管理员 | 配置系统、查看所有交接记录、管理 LLM/渠道 | 通过 Web 后台（无登录，依赖 OS 鉴权）|
+| 管理员 | 配置系统、查看所有交接记录、管理 LLM/渠道 | 通过 Web 后台，可选 Bearer Token 鉴权 |
 
 **Web 后台鉴权策略**：
-- **无登录校验**：能访问服务器端口即视为管理员
+- **默认无登录校验**：能访问服务器端口即视为管理员（适用于内网部署）
+- **可选 ADMIN_TOKEN 鉴权**：设置 `ADMIN_TOKEN` 环境变量后，所有 Admin API 请求需携带 `Authorization: Bearer <token>` 请求头，使用 `timingSafeEqual` 防时序攻击
 - 依赖操作系统自身鉴权机制（防火墙、VPN、内网隔离等）
 - 部署文档中建议：仅绑定 127.0.0.1 或通过防火墙限制访问
 
@@ -1146,10 +1154,17 @@ all-your-handover.exe uninstall
 ### 8.6 数据安全
 
 - 所有数据存储在客户本地
-- API Key 使用 AES-256-GCM 加密存储在 JSON 配置中（密钥由程序启动时从环境变量或机器特征派生）
-- 飞书 webhook 回调验证签名（Verification Token + Event Token），防止伪造请求
-- 内置 Git 版本控制（默认开启，静默运行）
-- 数据目录可直接备份（复制文件夹即可）
+- API Key 使用 AES-256-GCM 加密存储在 JSON 配置中，格式为 `iv:authTag:ciphertext`（hex 编码，冒号分隔）
+- 加密密钥来源优先级：`ENCRYPTION_KEY` 环境变量（SHA-256 派生） > 自动生成的 256-bit 随机密钥（持久化到 `data/config/.encryption-key`）
+- **重要**：`.encryption-key` 文件是加密密钥的唯一本地副本，丢失将导致所有已加密的 API Key 不可恢复。备份时必须包含此文件
+- 飞书 webhook 回调签名验证使用 `crypto.timingSafeEqual`（防止时序攻击），5 分钟防重放
+- Markdown 草稿写入时对用户输入进行安全净化（转义 `##` 标题和 `<!--` HTML 注释标记符，防止注入破坏草稿结构）
+- 交接记录 frontmatter 值使用 YAML 安全引号包裹（防止 YAML 注入）
+- 历史 API 的路径参数进行正则校验（防止路径遍历攻击）
+- Admin API GET 响应中 API Key 以 `***` 掩码显示
+- HTTP 请求体大小限制为 10MB
+- 内置 Git 版本控制（默认开启，静默运行），所有草稿和交接文件变更自动提交
+- 数据目录可直接备份（复制文件夹即可，需包含 `.encryption-key`）
 
 ---
 
@@ -1452,7 +1467,7 @@ function verifyFeishuSignature(req: Request): boolean {
   const timestamp = req.headers['x-lark-request-timestamp'];
   const nonce = req.headers['x-lark-request-nonce'];
   const signature = req.headers['x-lark-signature'];
-  const verificationToken = getFeishuPlatformConfig().verificationToken;
+  const encryptKey = getFeishuPlatformConfig().encryptKey || getFeishuPlatformConfig().verificationToken;
 
   if (!timestamp || !nonce || !signature) return false;
 
@@ -1460,8 +1475,9 @@ function verifyFeishuSignature(req: Request): boolean {
   const currentTime = Math.floor(Date.now() / 1000);
   if (Math.abs(currentTime - Number(timestamp)) > 300) return false;
 
-  const token = verificationToken;
-  const content = timestamp + nonce + token;
+  const token = encryptKey;
+  const body = JSON.stringify(req.body);
+  const content = timestamp + nonce + token + body;
   const hash = crypto.createHash('sha256').update(content).digest('hex');
   return hash === signature;
 }
@@ -2057,16 +2073,18 @@ Web 后台不设登录，能访问服务器即视为管理员。
 
 用户确认每条消息实时调 LLM。LLM 失败时不阻塞，保留原文。
 
-### 缺陷 6：错误处理和边界情况
+### ~~缺陷 6：错误处理和边界情况~~ **已解决**
 
-**补充**：
+**实现细节**：
 - 飞书/LLM API 限流：指数退避重试 + 告警
-- LLM API 失败：不阻塞流程，草稿保留原文
-- 草稿并发写入：文件锁（如 proper-lockfile）
+- LLM API 失败：不阻塞流程，草稿保留原文；未配置 LLM Provider 时使用原文兜底
+- 草稿并发写入：进程内 Mutex（Promise 锁），适用于单进程部署场景；多进程部署需额外同步机制
 - 程序崩溃恢复：启动时检查草稿完整性，自动修复
 - 两个人同时交班：第二个人收到提示"当前已有待交接记录"，需等前一次交接完成或通过"@自己 取消"取消
+- 签名验证使用 `crypto.timingSafeEqual`（防时序攻击）+ 5 分钟防重放 + 配置缓存 30 秒
+- Markdown 草稿净化防止注入，frontmatter 值 YAML 安全引号包裹
 
-### 缺陷 7：初始化流程
+### ~~缺陷 7：初始化流程~~ **已解决：Web 向导 3 步初始化**
 
 **补充首次部署步骤**：
 1. 下载并运行单可执行文件（或 `docker run`）
@@ -2118,3 +2136,4 @@ Web 后台不设登录，能访问服务器即视为管理员。
 | 2026-04-17 | v1.1 | 渠道改用 code（英文+数字）标识和文件命名；部署改为单可执行文件零依赖（优先于 Docker），支持 Linux+Windows；所有配置通过 Web 页面完成，避免命令行和配置文件操作 |
 | 2026-04-17 | v1.2 | 全面审计修复：架构图数据层更新、ChannelFactory改用code、模版getTemplate传入channelCode、文件命名改用sender.id、修复messageFilter语义（mention=@机器人）、pendingHandover持久化、飞书签名验证、API Key加密方式、Git防抖提交、clearDraft删除而非清空、系统服务权限说明、FeishuAdapter获取真实姓名、删除重复决策、修复矛盾描述 |
 | 2026-04-17 | v1.3 | 第二轮审计修复：①parseCommand改用senderId∈mentionList精准匹配 ②drainChannel加channelProcessing锁防竞态 ③交接文件路径补齐月份子目录 ④卡片回调参数修正 ⑤message.type字段统一 ⑥草稿存在性检查 ⑦FeishuAdapter补充code/botOpenId/用户缓存 ⑧定义Message接口 ⑨定义pending.json结构 ⑩新增HANDOVER_CANCEL指令 ⑪补全handleAudioMessage/handleImageMessage ⑫补全updateDraftAnalysis/updateDraftPreview ⑬补全pendingHandover操作函数 ⑭新增Web管理API全规格 ⑮飞书全量接收模式+Webhook URL配置说明 ⑯目录树文件名用ID ⑰路由参数统一channelCode ⑲平台凭证抽至platforms层共享 ⑳Webhook单一端点按chatId路由 ㉑channel.json改为运行时状态 ㉒buildHandoverRecord统一构建frontmatter ㉓parseDraftSections分离草稿区段 ㉔飞书签名验证实现 ㉕appendToDraft含messageId标记 |
+| 2026-04-18 | v1.4 | 实现审查与文档同步：①新增 .encryption-key 文件到目录树和安全说明 ②API Key 加密格式(iv:authTag:ciphertext)文档化 ③API 端点方法修正(POST→PUT for toggle/default/reset) ④交接详情API路径加 :month 段 ⑤历史查询参数名修正(startDate/endDate+分页) ⑥新增 GET /health 健康检查端点 ⑦安全措施补全(timingSafeEqual、Markdown净化、YAML安全引号、路径遍历防护、API Key掩码、请求体大小限制) ⑧文件锁改用进程内Mutex(非proper-lockfile) ⑨交接记录ID改UUID ⑩模版格式改{{placeholder}}占位符 ⑪缺陷6标记已解决 ⑫缺陷7标记已解决 ⑬飞书签名算法修正(SHA256+encryptKey+body,非仅token) ⑭新增encryptKey到FeishuPlatformConfig ⑮可选ADMIN_TOKEN鉴权 ⑯加密密钥文件权限0o600 ⑰Shell注入防护(service.ts写入文件替代管道) ⑱前端XSS防护(esc()转义) ⑲LLM队列监控接入真实数据 ⑳移除未用依赖(dotenv/proper-lockfile) ㉑GitManager错误处理 ㉒parseCommand改用mentionsBot检测 ㉓channelCode验证防路径遍历 |
