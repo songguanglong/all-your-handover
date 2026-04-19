@@ -1,7 +1,8 @@
-import { App, getApp } from './app';
+import { App } from './app';
 import { startServer } from './server';
 import { logger } from './utils/logger';
 import { registerService, unregisterService } from './utils/service';
+import type http from 'http';
 
 function parseArgs(args: string[]): { port: number; dataDir: string; command?: string } {
   let port = parseInt(process.env.PORT || '3000', 10);
@@ -50,7 +51,37 @@ async function main() {
   await app.initialize();
 
   await registerService(dataDir);
-  await startServer(port);
+  const server = await startServer(port);
+
+  // Graceful shutdown
+  let shuttingDown = false;
+  async function shutdown(signal: string) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`收到 ${signal}，正在优雅关闭...`);
+
+    // Flush pending Git commits
+    try {
+      await app.git.flush();
+    } catch (err) {
+      logger.error(`Git flush 失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // Close HTTP server (stop accepting new connections)
+    server.close(() => {
+      logger.info('HTTP 服务器已关闭');
+      process.exit(0);
+    });
+
+    // Force exit after 10s if graceful shutdown hangs
+    setTimeout(() => {
+      logger.error('优雅关闭超时，强制退出');
+      process.exit(1);
+    }, 10000);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 main().catch((err) => {

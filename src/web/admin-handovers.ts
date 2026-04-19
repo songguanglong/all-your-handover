@@ -4,7 +4,7 @@ import path from 'path';
 import { logger } from '../utils/logger';
 
 import { getDataDir } from '../utils/data-dir';
-function sanitizeError(err: unknown): string { return err instanceof Error ? err.message : 'Internal error'; }
+import { sanitizeError } from './sanitize-error';
 
 function parseFrontmatter(content: string): Record<string, unknown> {
   const match = content.match(/^---\n([\s\S]*?)\n---/);

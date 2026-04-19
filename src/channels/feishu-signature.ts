@@ -2,12 +2,18 @@ import crypto from 'crypto';
 import type { Request } from 'express';
 import { loadChannelsConfig } from '../services/config-service';
 import { decrypt } from '../utils/encryption';
+import { logger } from '../utils/logger';
 
 interface CachedPlatform {
   appId: string;
   appSecret: string;
   verificationToken: string;
   encryptKey?: string;
+}
+
+interface DecryptedPlatform {
+  appId: string;
+  encryptKey: string;
 }
 
 interface CachedConfig {
@@ -19,6 +25,9 @@ let cachedConfig: CachedConfig | null = null;
 let configCacheExpiry = 0;
 const CONFIG_CACHE_TTL = 30_000; // 30 seconds
 
+// Cache decrypted values separately (TTL aligned with config cache)
+let decryptedPlatform: DecryptedPlatform | null = null;
+
 async function getConfig(): Promise<CachedConfig> {
   const now = Date.now();
   if (cachedConfig && now < configCacheExpiry) {
@@ -26,12 +35,14 @@ async function getConfig(): Promise<CachedConfig> {
   }
   cachedConfig = await loadChannelsConfig();
   configCacheExpiry = now + CONFIG_CACHE_TTL;
+  decryptedPlatform = null;
   return cachedConfig;
 }
 
 export function invalidateConfigCache(): void {
   cachedConfig = null;
   configCacheExpiry = 0;
+  decryptedPlatform = null;
 }
 
 export async function verifyFeishuSignature(req: Request): Promise<boolean> {
@@ -55,10 +66,22 @@ export async function verifyFeishuSignature(req: Request): Promise<boolean> {
   // Feishu signature: SHA256(timestamp + nonce + encryptKey + body)
   // encryptKey is the "Encrypt Key" from Feishu developer console
   // If no separate encryptKey, use verificationToken as fallback
-  const encryptKey = feishuConfig.encryptKey || feishuConfig.verificationToken;
+  // Both are stored encrypted; decrypt once and cache
+  if (!decryptedPlatform) {
+    try {
+      const encKey = feishuConfig.encryptKey ? await decrypt(feishuConfig.encryptKey) : await decrypt(feishuConfig.verificationToken);
+      decryptedPlatform = { appId: feishuConfig.appId, encryptKey: encKey };
+    } catch (err) {
+      // Fallback: use raw value if not encrypted (legacy data)
+      logger.warn(`密钥解密失败，回退到明文值: ${err instanceof Error ? err.message : err}`);
+      decryptedPlatform = { appId: feishuConfig.appId, encryptKey: feishuConfig.encryptKey || feishuConfig.verificationToken };
+    }
+  }
+  const encryptKey = decryptedPlatform.encryptKey;
 
-  // Get raw request body for signature verification
-  const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+  // Use raw body for signature verification — JSON.stringify on parsed body
+  // may produce different output (key order, whitespace, unicode) than what Feishu signed
+  const body = req.rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
   const content = timestamp + nonce + encryptKey + body;
   const hash = crypto.createHash('sha256').update(content).digest('hex');
 

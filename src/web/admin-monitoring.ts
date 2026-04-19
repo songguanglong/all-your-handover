@@ -6,7 +6,7 @@ import { getApp } from '../app';
 import { logger } from '../utils/logger';
 
 import { getDataDir } from '../utils/data-dir';
-function sanitizeError(err: unknown): string { return err instanceof Error ? err.message : 'Internal error'; }
+import { sanitizeError } from './sanitize-error';
 
 export function registerMonitoringRoutes(router: import('express').Router, prefix: string): void {
   // System status

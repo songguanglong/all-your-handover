@@ -46,7 +46,9 @@ export interface Message {
   type: ContentType;
   timestamp: number;
   mentionsBot: boolean;
+  mentionsSelf: boolean;
   mentionList: string[];
+  parentId?: string;
 }
 
 // --- Commands ---
@@ -131,6 +133,7 @@ export interface ChannelAdapter {
   parseCommand(message: Message): Command | null;
   getUserInfo(userId: string): Promise<UserInfo>;
   getChatMembers(chatId: string): Promise<UserInfo[]>;
+  fetchMessageContent(messageId: string): Promise<string | null>;
 }
 
 // --- LLM ---
@@ -153,6 +156,8 @@ export interface TranscribeParams {
 export interface GenerateHandoverParams {
   draft: string;
   template: string;
+  previousHandover?: { id: string; date: string; body: string };
+  systemPrompt?: string;
 }
 
 export interface AnalyzeResult {
@@ -171,6 +176,7 @@ export interface LLMProvider {
   analyzeImage(params: AnalyzeImageParams): Promise<AnalyzeResult>;
   transcribeAudio(params: TranscribeParams): Promise<string>;
   generateHandover(params: GenerateHandoverParams): Promise<string>;
+  chatCompletion(messages: Array<{ role: string; content: string | unknown[] }>): Promise<string>;
 }
 
 export interface LLMProviderConfig {

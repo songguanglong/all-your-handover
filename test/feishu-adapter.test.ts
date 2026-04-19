@@ -16,7 +16,8 @@ describe('FeishuAdapter', () => {
       type: 'text',
       timestamp: Date.now(),
       mentionsBot: true,
-      mentionList: ['bot_open_id'], // bot was mentioned
+      mentionsSelf: true,
+      mentionList: ['user_1'], // user @'d themselves
     };
 
     it('parses 交班 command', () => {
@@ -48,8 +49,8 @@ describe('FeishuAdapter', () => {
       expect(adapter.parseCommand(msg)).toBeNull();
     });
 
-    it('returns null when bot is not mentioned', () => {
-      const msg = { ...baseMessage, content: { type: 'text' as const, text: '交班' }, mentionsBot: false, mentionList: [] };
+    it('returns null when user did not @ themselves', () => {
+      const msg = { ...baseMessage, content: { type: 'text' as const, text: '交班' }, mentionsSelf: false, mentionsBot: false, mentionList: [] };
       expect(adapter.parseCommand(msg)).toBeNull();
     });
 
@@ -85,6 +86,35 @@ describe('FeishuAdapter', () => {
     it('returns null for event without message', async () => {
       const msg = await adapter.receiveMessage({});
       expect(msg).toBeNull();
+    });
+  });
+
+  describe('fetchMessageContent', () => {
+    it('returns message content string', async () => {
+      const client = adapter.getClient();
+      const origGetMessage = client.getMessage.bind(client);
+      client.getMessage = async () => ({ body: { content: '{"text":"引用的消息"}' } });
+      const content = await adapter.fetchMessageContent('msg_parent');
+      expect(content).toBe('{"text":"引用的消息"}');
+      client.getMessage = origGetMessage;
+    });
+
+    it('returns null when message not found', async () => {
+      const client = adapter.getClient();
+      const origGetMessage = client.getMessage.bind(client);
+      client.getMessage = async () => ({ body: null });
+      const content = await adapter.fetchMessageContent('msg_missing');
+      expect(content).toBeNull();
+      client.getMessage = origGetMessage;
+    });
+
+    it('returns null on error', async () => {
+      const client = adapter.getClient();
+      const origGetMessage = client.getMessage.bind(client);
+      client.getMessage = async () => { throw new Error('API error'); };
+      const content = await adapter.fetchMessageContent('msg_error');
+      expect(content).toBeNull();
+      client.getMessage = origGetMessage;
     });
   });
 });

@@ -1,32 +1,48 @@
 import express from 'express';
 import path from 'path';
+import http from 'http';
 import { registerWebhookRoutes } from './channels/webhook';
 import { registerAdminRoutes } from './web/admin';
+import { logger } from './utils/logger';
 
-export async function startServer(port: number): Promise<void> {
-  const server = express();
+declare global {
+  namespace Express {
+    interface Request {
+      rawBody?: string;
+    }
+  }
+}
 
-  // Limit request body size to 10MB
-  server.use(express.json({ limit: '10mb' }));
-  server.use(express.urlencoded({ extended: true, limit: '10mb' }));
+export async function startServer(port: number): Promise<http.Server> {
+  const app = express();
+
+  // Capture raw body for webhook signature verification before JSON parsing
+  app.use(express.json({
+    limit: '10mb',
+    verify: (req, _res, buf) => { (req as express.Request).rawBody = buf.toString(); },
+  }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // Static files (Web admin frontend)
   const staticDir = path.join(__dirname, 'web/static');
-  server.use('/admin', express.static(staticDir));
+  app.use('/admin', express.static(staticDir));
 
   // Feishu Webhook
-  registerWebhookRoutes(server);
+  registerWebhookRoutes(app);
 
   // Admin API
-  registerAdminRoutes(server);
+  registerAdminRoutes(app);
 
   // Health check
-  server.get('/health', (_req, res) => {
+  app.get('/health', (_req, res) => {
     res.json({ status: 'ok', version: process.env.npm_package_version || '0.1.0' });
   });
 
-  server.listen(port, () => {
-    console.log(`All Your Handover 已启动: http://localhost:${port}`);
-    console.log(`管理后台: http://localhost:${port}/admin`);
+  return new Promise((resolve) => {
+    const server = app.listen(port, () => {
+      logger.info(`All Your Handover 已启动: http://localhost:${port}`);
+      logger.info(`管理后台: http://localhost:${port}/admin`);
+      resolve(server);
+    });
   });
 }

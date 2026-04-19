@@ -3,10 +3,11 @@ import http from 'http';
 import type { FeishuPlatformConfig } from '../types';
 import { logger } from '../utils/logger';
 
-function request(url: string, options: { method: string; headers: Record<string, string> }, body?: string): Promise<string> {
+function request(url: string, options: { method: string; headers: Record<string, string>; timeout?: number }, body?: string): Promise<string> {
+  const timeout = options.timeout ?? 10000;
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
-    const req = protocol.request(url, options, (res) => {
+    const req = protocol.request(url, { ...options, timeout }, (res) => {
       let data = '';
       res.on('data', (chunk: string) => { data += chunk; });
       res.on('end', () => {
@@ -18,6 +19,7 @@ function request(url: string, options: { method: string; headers: Record<string,
       });
     });
     req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error(`请求超时 (${timeout}ms)`)); });
     if (body) req.write(body);
     req.end();
   });
@@ -216,5 +218,32 @@ export class FeishuClient {
       id: item.member_id,
       name: item.name || item.member_id,
     }));
+  }
+
+  async getMessage(messageId: string): Promise<{ body: Record<string, unknown> | null }> {
+    const token = await this.getTenantToken();
+    const url = `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}`;
+
+    try {
+      const response = await request(url, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+
+      const data = JSON.parse(response);
+      if (data.code !== 0) {
+        logger.warn(`Feishu getMessage error: ${data.msg}`);
+        return { body: null };
+      }
+
+      const items = data.data?.items;
+      if (items && items.length > 0) {
+        return { body: items[0] };
+      }
+      return { body: data.data?.body || null };
+    } catch (err) {
+      logger.warn(`Feishu getMessage failed: ${err instanceof Error ? err.message : err}`);
+      return { body: null };
+    }
   }
 }

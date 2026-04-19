@@ -1,6 +1,6 @@
 # All Your Handover - 产品设计文档
 
-> **版本**：v1.4
+> **版本**：v1.8
 > **日期**：2026-04-18
 > **状态**：开发就绪
 > **项目名**：All Your Handover
@@ -169,9 +169,11 @@
   ├─ all：处理所有消息 → 继续
   └─ mention：仅处理包含 @机器人 的消息 → 过滤
         ↓
+如果消息回复了另一条消息 → 获取被引用消息内容作为上下文
+        ↓
 如果该群没有草稿 → 自动创建草稿（ongoing.md）
         ↓
-LLM 实时分析内容
+LLM 实时分析内容（含引用上下文，如有）
         ↓
 追加到群的当前交接草稿（Markdown）
         ↓
@@ -250,7 +252,9 @@ LLM 实时分析内容
         ↓
 程序收到交班指令
         ↓
-LLM 按模版整理当前草稿生成交接单
+加载上一班交接记录（如有）+ 渠道系统提示词
+        ↓
+LLM 按模版 + 上下文整理当前草稿生成交接单
         ↓
 程序向群聊发送交接消息卡片（完整交接内容）
         ↓
@@ -274,7 +278,9 @@ LLM 按模版整理当前草稿生成交接单
         ↓
 程序收到交班指令
         ↓
-LLM 按模版整理当前草稿生成交接单
+加载上一班交接记录（如有）+ 渠道系统提示词
+        ↓
+LLM 按模版 + 上下文整理当前草稿生成交接单
         ↓
 直接保存交接记录（Markdown），清空草稿
         ↓
@@ -325,6 +331,7 @@ data/
 │   └── qiantai/               # code: "qiantai"（创建渠道时指定，仅英文+数字）
 │       ├── channel.json        # 渠道运行时状态（非配置，不与 channels.json 重复）
 │       ├── template.md         # 交接模版（渠道级别，不同群可用不同模版）
+│       ├── system-prompt.txt   # 系统提示词（渠道级别，影响 LLM 生成风格）
 │       ├── handovers/          # 交接记录
 │       │   └── 2026-04/
 │       │       ├── 2026-04-01_ou_xxx_ou_yyy.md
@@ -580,15 +587,15 @@ updated_at: 2026-04-01 15:30
 // 渠道适配器接口
 interface ChannelAdapter {
   // 基本信息
-  readonly type: 'feishu' | 'wecom' | 'dingtalk' | 'slack' | 'telegram';
+  readonly type: string;   // 'feishu' | 'wecom' | 'dingtalk' 等
   readonly code: string;   // 渠道标识（英文+数字+下划线，用于文件路径）
   readonly name: string;   // 显示名称（中文，可随时修改）
 
   // 初始化
-  initialize(config: ChannelConfig): Promise<void>;
+  initialize(config: { platform: PlatformConfig; chatId: string }): Promise<void>;
 
   // 消息相关
-  receiveMessage(event: any): Promise<Message | null>;
+  receiveMessage(event: unknown): Promise<Message | null>;
   sendMessage(chatId: string, message: MessageContent): Promise<void>;
   // 推送富文本卡片（交接内容展示、交接完成确认）
   sendCard(chatId: string, card: CardContent): Promise<void>;
@@ -603,8 +610,8 @@ interface ChannelAdapter {
   getUserInfo(userId: string): Promise<UserInfo>;
   getChatMembers(chatId: string): Promise<UserInfo[]>;
 
-  // 事件订阅
-  subscribe(event: string, handler: EventHandler): void;
+  // 获取引用消息内容（用于回复消息的上下文注入）
+  fetchMessageContent(messageId: string): Promise<string | null>;
 }
 
 // 统一消息结构
@@ -615,10 +622,12 @@ interface Message {
   senderName: string;
   sender: UserInfo;
   content: Content;
-  type: 'text' | 'image' | 'audio' | 'unknown';
+  type: ContentType;  // 'text' | 'image' | 'audio' | 'unknown'
   timestamp: number;
   mentionsBot: boolean;   // 消息中是否 @了机器人
+  mentionsSelf: boolean;  // 发送者是否 @了自己（指令触发条件）
   mentionList: string[];  // 被 @的用户 ID 列表
+  parentId?: string;       // 被引用/回复的消息 ID（用于上下文注入）
 }
 
 // 指令类型
@@ -753,7 +762,7 @@ class ChannelFactory {
   private adapters: Map<string, ChannelAdapter> = new Map();
 
   // 创建渠道适配器
-  create(type: string, channelConfig: ChannelConfig, platformConfig: PlatformConfig): ChannelAdapter {
+  create(type: string, channelConfig: { code: string; name: string; chatId: string }, platformConfig: PlatformConfig): ChannelAdapter {
     let adapter: ChannelAdapter;
 
     switch (type) {
@@ -826,7 +835,7 @@ interface LLMProvider {
   readonly type: string;
   readonly name: string;
 
-  initialize(config: LLMConfig): Promise<void>;
+  initialize(config: LLMProviderConfig): Promise<void>;
 
   // 文本分析
   analyzeText(params: AnalyzeTextParams): Promise<AnalyzeResult>;
@@ -837,8 +846,23 @@ interface LLMProvider {
   // 多模态 - 语音转文字
   transcribeAudio(params: TranscribeParams): Promise<string>;
 
-  // 生成交接单
+  // 生成交接单（支持上一班上下文和可配置系统提示词）
   generateHandover(params: GenerateHandoverParams): Promise<string>;
+
+  // 通用对话补全（用于访谈式提示词生成等）
+  chatCompletion(messages: Array<{ role: string; content: string | unknown[] }>): Promise<string>;
+}
+
+// 生成交接单参数
+interface GenerateHandoverParams {
+  draft: string;            // 草稿内容
+  template: string;         // 交接模版
+  previousHandover?: {      // 上一班交接记录（可选，由代码加载）
+    id: string;
+    date: string;
+    body: string;
+  };
+  systemPrompt?: string;    // 可配置系统提示词（可选，默认值在代码中）
 }
 ```
 
@@ -918,6 +942,7 @@ class LLMProviderFactory {
 ### 6.5 Provider 配置 API
 
 ```
+GET    /api/admin/llm-providers          列出所有 Provider（API Key 掩码显示，含 defaultProviderId）
 POST   /api/admin/llm-providers          添加 Provider
 PUT    /api/admin/llm-providers/:id       更新 Provider
 PUT    /api/admin/llm-providers/:id/default  设为默认
@@ -957,6 +982,19 @@ PUT    /api/admin/channels/:code/template     更新渠道模版
 PUT    /api/admin/channels/:code/template/reset  重置为默认模版
 ```
 
+### 6.8.1 系统提示词 API
+
+```
+GET    /api/admin/channels/:code/system-prompt              获取系统提示词
+PUT    /api/admin/channels/:code/system-prompt              更新系统提示词（最大 4096 字符）
+PUT    /api/admin/channels/:code/system-prompt/reset        重置为默认系统提示词
+POST   /api/admin/channels/:code/system-prompt/interview    访谈式系统提示词生成
+```
+
+系统提示词存储在 `data/channels/{code}/system-prompt.txt`，默认值为"你是一个交接班助手。请根据以下模版和草稿内容，生成交接班记录。保持模版结构，用实际内容替换占位符。"（不假设具体业务场景）。
+
+访谈式生成接口接收 `{ messages: Array<{role: 'user'|'assistant', content: string}> }`，返回 `{ reply: string, proposedPrompt?: string }`。当 LLM 认为信息足够时，返回以"【系统提示词】"开头的完整提示词建议，用户可采用、编辑或继续对话。
+
 ### 6.9 历史查询 API
 
 ```
@@ -988,11 +1026,10 @@ GET    /health                                健康检查（返回 status + ver
 | 角色 | 权限 | 说明 |
 |------|------|------|
 | 群聊成员 | 发送随手记、@自己 交班/接班、查看群内消息卡片 | 无需登录系统 |
-| 管理员 | 配置系统、查看所有交接记录、管理 LLM/渠道 | 通过 Web 后台，可选 Bearer Token 鉴权 |
+| 管理员 | 配置系统、查看所有交接记录、管理 LLM/渠道 | 通过 Web 后台（无登录校验，依赖 OS 鉴权） |
 
 **Web 后台鉴权策略**：
-- **默认无登录校验**：能访问服务器端口即视为管理员（适用于内网部署）
-- **可选 ADMIN_TOKEN 鉴权**：设置 `ADMIN_TOKEN` 环境变量后，所有 Admin API 请求需携带 `Authorization: Bearer <token>` 请求头，使用 `timingSafeEqual` 防时序攻击
+- **无登录校验**：能访问服务器端口即视为管理员（适用于内网部署）
 - 依赖操作系统自身鉴权机制（防火墙、VPN、内网隔离等）
 - 部署文档中建议：仅绑定 127.0.0.1 或通过防火墙限制访问
 
@@ -1013,6 +1050,7 @@ GET    /health                                健康检查（返回 status + ver
 | LLM Provider | 系统级 | 无（初始化向导必填）| API Key、模型、端点 |
 | 默认 LLM Provider | 系统级 | 第一个添加的 Provider | 多 Provider 时指定默认 |
 | 交接模版 | 渠道级 | 内置默认模版 | 自由 Markdown，LLM 理解结构，不同群可用不同模版 |
+| 系统提示词 | 渠道级 | 内置默认值（无业务假设）| LLM 生成交接记录时的角色指令，可通过访谈式对话生成 |
 | 渠道（群）| 系统级 | 无（初始化向导必填）| code + name + 飞书 App 配置 |
 | requireAccept | 渠道级 | `true` | 是否需要接班人确认 |
 | messageFilter | 渠道级 | `all` | all: 处理所有消息 / mention: 仅 @机器人 |
@@ -1163,6 +1201,7 @@ all-your-handover.exe uninstall
 - 历史 API 的路径参数进行正则校验（防止路径遍历攻击）
 - Admin API GET 响应中 API Key 以 `***` 掩码显示
 - HTTP 请求体大小限制为 10MB
+- Express 使用 `express.json({ verify })` 捕获原始请求体（`req.rawBody`），用于 webhook 签名验证，避免 `JSON.stringify(req.body)` 重序列化导致的签名不匹配
 - 内置 Git 版本控制（默认开启，静默运行），所有草稿和交接文件变更自动提交
 - 数据目录可直接备份（复制文件夹即可，需包含 `.encryption-key`）
 
@@ -1188,14 +1227,14 @@ app.post('/webhook/feishu', async (req, res) => {
 
   // 从事件中提取 chatId，查找对应渠道
   const chatId = req.body.event?.message?.chat_id;
-  const channelCode = findChannelCodeByChatId(chatId);
+  const channelCode = await findChannelCodeByChatId(chatId);
 
   if (!channelCode) {
     return res.json({ code: 0 }); // 未配置的群，忽略
   }
 
   const channel = channelFactory.get(channelCode);
-  const channelConfig = getChannelConfig(channelCode);
+  const channelConfig = await getChannelConfig(channelCode);
 
   // 解析消息（非消息事件则忽略）
   const message = await channel.receiveMessage(req.body);
@@ -1225,12 +1264,19 @@ app.post('/webhook/feishu', async (req, res) => {
     return;
   }
 
+  // 如果消息回复了另一条消息，获取被引用消息的上下文
+  let quotedContext: string | undefined;
+  if (message.parentId) {
+    const parentContent = await channel.fetchMessageContent(message.parentId);
+    if (parentContent) quotedContext = parentContent;
+  }
+
   if (message.type === 'text') {
-    await handleTextMessage(message, channel, channelCode);
+    await handleTextMessage(message, channel, channelCode, enqueueLLM, getProvider, quotedContext);
   } else if (message.type === 'image') {
-    await handleImageMessage(message, channel, channelCode);
+    await handleImageMessage(message, channel, channelCode, enqueueLLM, getProvider, quotedContext);
   } else if (message.type === 'audio') {
-    await handleAudioMessage(message, channel, channelCode);
+    await handleAudioMessage(message, channel, channelCode, enqueueLLM, getProvider, quotedContext);
   }
 
   res.json({ code: 0 });
@@ -1303,7 +1349,7 @@ app.post('/webhook/feishu/card', async (req, res) => {
 
 // 处理交班指令：@自己 交班
 async function handleHandoverStart(sender: UserInfo, channel: ChannelAdapter, chatId: string, channelCode: string) {
-  const channelConfig = getChannelConfig(channelCode);
+  const channelConfig = await getChannelConfig(channelCode);
   const draftPath = `data/channels/${channelCode}/drafts/ongoing.md`;
 
   // 检查草稿是否存在
@@ -1320,11 +1366,15 @@ async function handleHandoverStart(sender: UserInfo, channel: ChannelAdapter, ch
     return;
   }
 
-  // LLM 按模版整理（生成正文部分）
+  // LLM 按模版整理（生成正文部分，包含上一班上下文和可配置系统提示词）
+  const previousHandover = await getLatestHandover(channelCode);  // 加载上一班交接记录
+  const systemPrompt = await getSystemPrompt(channelCode);        // 加载渠道级系统提示词
   const llm = llmFactory.getDefault();
   const handoverBody = await llm.generateHandover({
-    draft: draft,
-    template: await getTemplate(channelCode)
+    draft,
+    template: await getTemplate(channelCode),
+    previousHandover,    // 可选，LLM 自行判断如何参考上一班信息
+    systemPrompt,        // 可选，替代硬编码的系统指令
   });
 
   if (channelConfig.settings.requireAccept) {
@@ -1355,7 +1405,7 @@ async function handleHandoverStart(sender: UserInfo, channel: ChannelAdapter, ch
 
 // 处理接班指令：@自己 接班
 async function handleHandoverAccept(receiver: UserInfo, channel: ChannelAdapter, chatId: string, channelCode: string) {
-  const channelConfig = getChannelConfig(channelCode);
+  const channelConfig = await getChannelConfig(channelCode);
 
   if (!channelConfig.settings.requireAccept) {
     await channel.sendMessage(chatId, { type: 'text', text: '当前群不需要接班确认，交班时已自动归档。' });
@@ -1415,7 +1465,7 @@ function buildHandoverRecord(
   body: string,
   meta: { requireAccept: boolean; createdAt: string; completedAt?: string }
 ): string {
-  const channelConfig = getChannelConfig(channelCode);
+  const channelConfig = await getChannelConfig(channelCode);
   const frontmatter = [
     '---',
     `id: hv_${Date.now()}`,
@@ -1460,26 +1510,30 @@ function findChannelCodeByChatId(chatId: string): string | null {
   return channel?.code ?? null;
 }
 
-// 飞书签名验证
+// 飞书签名验证（使用 rawBody 避免 JSON 重序列化导致签名不匹配）
 import * as crypto from 'crypto';
 
-function verifyFeishuSignature(req: Request): boolean {
-  const timestamp = req.headers['x-lark-request-timestamp'];
-  const nonce = req.headers['x-lark-request-nonce'];
-  const signature = req.headers['x-lark-signature'];
-  const encryptKey = getFeishuPlatformConfig().encryptKey || getFeishuPlatformConfig().verificationToken;
+async function verifyFeishuSignature(req: Request): Promise<boolean> {
+  const timestamp = req.headers['x-lark-request-timestamp'] as string | undefined;
+  const nonce = req.headers['x-lark-request-nonce'] as string | undefined;
+  const signature = req.headers['x-lark-signature'] as string | undefined;
 
   if (!timestamp || !nonce || !signature) return false;
 
-  // 防重放攻击：时间戳超过 5 分钟则拒绝
   const currentTime = Math.floor(Date.now() / 1000);
   if (Math.abs(currentTime - Number(timestamp)) > 300) return false;
 
-  const token = encryptKey;
-  const body = JSON.stringify(req.body);
-  const content = timestamp + nonce + token + body;
+  const config = await loadChannelsConfig();
+  const encryptKey = config.platforms.feishu?.encryptKey || config.platforms.feishu?.verificationToken;
+
+  // 使用 express.json({ verify }) 捕获的原始请求体，而非 JSON.stringify(req.body)
+  // JSON.stringify 可能因 key 顺序、空白、Unicode 转义差异导致签名不匹配
+  const body = req.rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+  const content = timestamp + nonce + encryptKey + body;
   const hash = crypto.createHash('sha256').update(content).digest('hex');
-  return hash === signature;
+
+  if (hash.length !== signature.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature));
 }
 
 // 辅助函数
@@ -1630,7 +1684,12 @@ class Semaphore {
 const llmQueue = new LLMQueue({ maxGlobalConcurrency: 3 });
 
 // 处理文本消息
-async function handleTextMessage(message: Message, channel: ChannelAdapter, channelCode: string) {
+async function handleTextMessage(
+  message: Message, channel: ChannelAdapter, channelCode: string,
+  enqueueLLM: (code: string, task: LLMTask) => void,
+  getProvider: () => LLMProvider | null,
+  quotedContext?: string
+) {
   // 1. 原文立即写入草稿（不等待 LLM）
   await appendToDraft(channelCode, {
     messageId: message.id,
@@ -1642,12 +1701,13 @@ async function handleTextMessage(message: Message, channel: ChannelAdapter, chan
     timestamp: new Date()
   });
 
-  // 2. LLM 分析入队
-  llmQueue.enqueue(channelCode, {
-    execute: () => llmFactory.getDefault().analyzeText({
-      text: message.content.text,
-      prompt: '请分析这段酒店工作记录，提取关键信息：类别、紧急程度、是否需要接班人关注'
-    }),
+  // 2. LLM 分析入队（支持引用上下文注入）
+  const prompt = quotedContext
+    ? `分析以下酒店交接班消息，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}\n\n以下是该消息引用的上一条消息内容，请结合引用内容理解当前消息的上下文:\n${quotedContext}`
+    : '分析以下酒店交接班消息，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}';
+  const provider = getProvider();
+  enqueueLLM(channelCode, {
+    execute: provider ? () => provider.analyzeText({ text: message.content.text, prompt }) : () => Promise.resolve({ category: '未分类', content: message.content.text, urgency: 'normal' }),
     onSuccess: (analysis) => updateDraftAnalysis(channelCode, message.id, analysis),
     onFailure: (err) => { logger.error(`LLM 分析失败: ${err.message}`); }
   });
@@ -1827,7 +1887,7 @@ async function createDraft(channelCode) {
   await fs.mkdir(draftDir, { recursive: true });
 
   const now = new Date().toISOString();
-  const channelConfig = getChannelConfig(channelCode);
+  const channelConfig = await getChannelConfig(channelCode);
   const channelDisplayName = channelConfig.name;
   const content = `---\nchannel_code: ${channelCode}\nchannel_name: ${channelDisplayName}\nstarted_at: ${now}\nupdated_at: ${now}\n---\n\n# ${channelDisplayName} - 当前交接草稿\n\n## 记录内容\n\n## LLM 整理预览\n`;
   await fs.writeFile(`${draftDir}/ongoing.md`, content);
@@ -2137,3 +2197,7 @@ Web 后台不设登录，能访问服务器即视为管理员。
 | 2026-04-17 | v1.2 | 全面审计修复：架构图数据层更新、ChannelFactory改用code、模版getTemplate传入channelCode、文件命名改用sender.id、修复messageFilter语义（mention=@机器人）、pendingHandover持久化、飞书签名验证、API Key加密方式、Git防抖提交、clearDraft删除而非清空、系统服务权限说明、FeishuAdapter获取真实姓名、删除重复决策、修复矛盾描述 |
 | 2026-04-17 | v1.3 | 第二轮审计修复：①parseCommand改用senderId∈mentionList精准匹配 ②drainChannel加channelProcessing锁防竞态 ③交接文件路径补齐月份子目录 ④卡片回调参数修正 ⑤message.type字段统一 ⑥草稿存在性检查 ⑦FeishuAdapter补充code/botOpenId/用户缓存 ⑧定义Message接口 ⑨定义pending.json结构 ⑩新增HANDOVER_CANCEL指令 ⑪补全handleAudioMessage/handleImageMessage ⑫补全updateDraftAnalysis/updateDraftPreview ⑬补全pendingHandover操作函数 ⑭新增Web管理API全规格 ⑮飞书全量接收模式+Webhook URL配置说明 ⑯目录树文件名用ID ⑰路由参数统一channelCode ⑲平台凭证抽至platforms层共享 ⑳Webhook单一端点按chatId路由 ㉑channel.json改为运行时状态 ㉒buildHandoverRecord统一构建frontmatter ㉓parseDraftSections分离草稿区段 ㉔飞书签名验证实现 ㉕appendToDraft含messageId标记 |
 | 2026-04-18 | v1.4 | 实现审查与文档同步：①新增 .encryption-key 文件到目录树和安全说明 ②API Key 加密格式(iv:authTag:ciphertext)文档化 ③API 端点方法修正(POST→PUT for toggle/default/reset) ④交接详情API路径加 :month 段 ⑤历史查询参数名修正(startDate/endDate+分页) ⑥新增 GET /health 健康检查端点 ⑦安全措施补全(timingSafeEqual、Markdown净化、YAML安全引号、路径遍历防护、API Key掩码、请求体大小限制) ⑧文件锁改用进程内Mutex(非proper-lockfile) ⑨交接记录ID改UUID ⑩模版格式改{{placeholder}}占位符 ⑪缺陷6标记已解决 ⑫缺陷7标记已解决 ⑬飞书签名算法修正(SHA256+encryptKey+body,非仅token) ⑭新增encryptKey到FeishuPlatformConfig ⑮可选ADMIN_TOKEN鉴权 ⑯加密密钥文件权限0o600 ⑰Shell注入防护(service.ts写入文件替代管道) ⑱前端XSS防护(esc()转义) ⑲LLM队列监控接入真实数据 ⑳移除未用依赖(dotenv/proper-lockfile) ㉑GitManager错误处理 ㉒parseCommand改用mentionsBot检测 ㉓channelCode验证防路径遍历 |
+| 2026-04-18 | v1.5 | 签名验证修复：①Express.json增加verify回调捕获rawBody防止JSON重序列化导致签名不匹配 ②飞书签名验证改用req.rawBody替代JSON.stringify(req.body) ③签名验证改为async(异步加载配置) ④安全措施新增rawBody捕获说明 ⑤CLAUDE.md移出.gitignore以纳入版本控制 |
+| 2026-04-18 | v1.6 | ①指令触发修复：改为检测用户@自己(senderId in mentionList)而非@机器人 ②草稿卡片按钮value补充chatId字段使回调可路由到正确群组 ③平台配置encryptKey加密存储（与appSecret/verificationToken一致） ④语音消息处理策略：优先发送音频给LLM多模态分析，失败后回退到Whisper转写+文本分析 |
+| 2026-04-19 | v1.7 | ①交接上下文：交班生成时自动加载上一班完整交接记录注入LLM prompt，代码负责加载（context-service），LLM自行判断如何参考 ②系统提示词可配置：每渠道可自定义system-prompt.txt，默认值去掉了"酒店"假设，用户可在管理后台编辑 ③regenerate bug修复：重新整理按钮现在正确调用generateHandover并更新草稿预览区域 ④删除后台认证体系：移除ADMIN_TOKEN、Bearer认证、登录页，内网工具不需要应用层认证 ⑤安全修复：admin路由路径穿越校验、mentionsBot回退修正、解密失败日志告警 |
+| 2026-04-19 | v1.8 | ①引用消息上下文注入：消息回复(Reply)时自动获取被引用消息内容，注入LLM分析prompt，使回复消息的上下文更准确 ②ChannelAdapter接口新增fetchMessageContent方法，替代直接暴露FeishuClient ③访谈式系统提示词编辑器：Web后台模版页增加"通过对话生成提示词"功能，LLM通过访谈引导用户生成定制化系统提示词，用户可采用、编辑或取消 ④chatCompletion方法公开到LLMProvider接口，支持对话式API调用 ⑤文档同步：更新ChannelAdapter/Message/LLMProvider接口定义、移除过时鉴权描述、补充系统提示词API和数据目录结构、修正handleHandoverStart签名和handle*Message参数、更新数据流图 |

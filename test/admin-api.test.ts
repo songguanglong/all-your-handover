@@ -164,6 +164,64 @@ describe('Admin API', () => {
     });
   });
 
+  describe('System Prompt', () => {
+    it('returns default system prompt when none set', async () => {
+      const app = createApp();
+      const res = await request(app).get('/api/admin/channels/qiantai/system-prompt');
+      expect(res.status).toBe(200);
+      expect(res.body.data.systemPrompt).toContain('交接班助手');
+    });
+
+    it('saves a custom system prompt', async () => {
+      const app = createApp();
+      await request(app)
+        .put('/api/admin/channels/qiantai/system-prompt')
+        .send({ systemPrompt: '你是一个工厂交接班助手。' });
+      const res = await request(app).get('/api/admin/channels/qiantai/system-prompt');
+      expect(res.body.data.systemPrompt).toBe('你是一个工厂交接班助手。');
+    });
+
+    it('rejects system prompt over 4096 chars', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .put('/api/admin/channels/qiantai/system-prompt')
+        .send({ systemPrompt: 'x'.repeat(4097) });
+      expect(res.status).toBe(400);
+    });
+
+    it('resets to default system prompt', async () => {
+      const app = createApp();
+      await request(app)
+        .put('/api/admin/channels/qiantai/system-prompt')
+        .send({ systemPrompt: 'Custom prompt' });
+      await request(app).put('/api/admin/channels/qiantai/system-prompt/reset');
+      const res = await request(app).get('/api/admin/channels/qiantai/system-prompt');
+      expect(res.body.data.systemPrompt).toContain('交接班助手');
+    });
+
+    it('rejects invalid channel code for system prompt', async () => {
+      const app = createApp();
+      const res = await request(app).get('/api/admin/channels/bad!code/system-prompt');
+      expect(res.status).toBe(400);
+    });
+
+    it('interview endpoint rejects empty messages', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/admin/channels/qiantai/system-prompt/interview')
+        .send({ messages: [] });
+      expect(res.status).toBe(400);
+    });
+
+    it('interview endpoint rejects invalid channel code', async () => {
+      const app = createApp();
+      const res = await request(app)
+        .post('/api/admin/channels/bad!code/system-prompt/interview')
+        .send({ messages: [{ role: 'user', content: 'hello' }] });
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe('Platforms', () => {
     it('returns null for unconfigured platform', async () => {
       const app = createApp();

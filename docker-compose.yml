@@ -11,4 +11,7 @@ services:
     environment:
       - DATA_DIR=/data
       - PORT=3000
+      # - ENCRYPTION_KEY=your-encryption-key  # Optional: set to persist encryption key across restarts
     restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1

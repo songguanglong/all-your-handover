@@ -17,6 +17,8 @@ interface FeishuEvent {
     message?: {
       chat_id?: string;
       message_id?: string;
+      parent_id?: string;
+      root_id?: string;
       msg_type?: string;
       content?: string;
       mentions?: Array<{
@@ -71,12 +73,15 @@ export class FeishuAdapter implements ChannelAdapter {
 
     const chatId = msg.chat_id || '';
     const messageId = msg.message_id || uuid();
+    const parentId = msg.parent_id || undefined;
     const mentions = msg.mentions || [];
 
     const mentionList: string[] = mentions
       .map(m => m.id?.open_id || m.id?.user_id || '')
       .filter(Boolean);
-    const mentionsBot = this.botOpenId ? mentionList.includes(this.botOpenId) : mentionList.length > 0;
+    // Command trigger: user @'s themselves in the group (design: @自己 交班/接班/取消/草稿)
+    const mentionsSelf = mentionList.includes(senderId);
+    const mentionsBot = this.botOpenId ? mentionList.includes(this.botOpenId) : false;
 
     let content: Message['content'];
     let type: Message['type'];
@@ -96,12 +101,24 @@ export class FeishuAdapter implements ChannelAdapter {
       }
       case 'image': {
         type = 'image';
-        content = { type: 'image', data: Buffer.alloc(0) };
+        try {
+          const data = await this.client.downloadImage(messageId);
+          content = { type: 'image', data };
+        } catch (err) {
+          logger.warn(`下载图片失败 (${messageId}): ${err instanceof Error ? err.message : err}`);
+          content = { type: 'image', data: Buffer.alloc(0) };
+        }
         break;
       }
       case 'audio': {
         type = 'audio';
-        content = { type: 'audio', data: Buffer.alloc(0) };
+        try {
+          const data = await this.client.downloadAudio(messageId);
+          content = { type: 'audio', data };
+        } catch (err) {
+          logger.warn(`下载语音失败 (${messageId}): ${err instanceof Error ? err.message : err}`);
+          content = { type: 'audio', data: Buffer.alloc(0) };
+        }
         break;
       }
       default:
@@ -119,7 +136,9 @@ export class FeishuAdapter implements ChannelAdapter {
       type,
       timestamp: Date.now(),
       mentionsBot,
+      mentionsSelf,
       mentionList,
+      parentId,
     };
   }
 
@@ -128,7 +147,7 @@ export class FeishuAdapter implements ChannelAdapter {
 
     const text = (message.content as { text: string }).text.trim();
 
-    if (!message.mentionsBot) return null;
+    if (!message.mentionsSelf) return null;
 
     const keyword = text.replace(/@\S+/g, '').trim();
 
@@ -230,5 +249,17 @@ export class FeishuAdapter implements ChannelAdapter {
 
   getClient(): FeishuClient {
     return this.client;
+  }
+
+  async fetchMessageContent(messageId: string): Promise<string | null> {
+    try {
+      const msg = await this.client.getMessage(messageId);
+      if (!msg?.body) return null;
+      const content = msg.body.content;
+      return typeof content === 'string' ? content : JSON.stringify(content);
+    } catch (err) {
+      logger.warn(`获取引用消息失败: ${err instanceof Error ? err.message : err}`);
+      return null;
+    }
   }
 }

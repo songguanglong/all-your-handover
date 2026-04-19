@@ -4,13 +4,10 @@ import { loadChannelsConfig, saveChannelsConfig } from '../services/config-servi
 import { encrypt, decrypt } from '../utils/encryption';
 import { invalidateConfigCache } from '../channels/feishu-signature';
 import { logger } from '../utils/logger';
+import { sanitizeError } from './sanitize-error';
 
 // Validate platform type against known types
 const VALID_PLATFORM_TYPES = ['feishu', 'wecom', 'dingtalk'];
-
-function sanitizeError(err: unknown): string {
-  return err instanceof Error ? err.message : 'Internal error';
-}
 
 export function registerPlatformRoutes(router: import('express').Router, prefix: string): void {
   // Get platform config (with secrets masked)
@@ -57,7 +54,7 @@ export function registerPlatformRoutes(router: import('express').Router, prefix:
       if (updates.appId) merged.appId = String(updates.appId).slice(0, 100);
       if (updates.appSecret) merged.appSecret = await encrypt(String(updates.appSecret));
       if (updates.verificationToken) merged.verificationToken = await encrypt(String(updates.verificationToken));
-      if (updates.encryptKey) merged.encryptKey = String(updates.encryptKey).slice(0, 100);
+      if (updates.encryptKey) merged.encryptKey = await encrypt(String(updates.encryptKey));
 
       platforms[type] = merged;
       config.platforms = platforms as unknown as Record<string, PlatformConfig>;
@@ -90,9 +87,9 @@ export function registerPlatformRoutes(router: import('express').Router, prefix:
         const client = new FeishuClient();
         // Decrypt secrets
         let appSecret = feishuConfig.appSecret;
-        try { appSecret = await decrypt(appSecret); } catch { /* not encrypted or different key */ }
+        try { appSecret = await decrypt(appSecret); } catch { logger.warn('appSecret 解密失败，使用明文值'); }
         let verificationToken = feishuConfig.verificationToken;
-        try { verificationToken = await decrypt(verificationToken); } catch { /* not encrypted */ }
+        try { verificationToken = await decrypt(verificationToken); } catch { logger.warn('verificationToken 解密失败，使用明文值'); }
         await client.initialize({ appId: feishuConfig.appId, appSecret, verificationToken });
         await client.getTenantToken();
         res.json({ code: 0, message: '连接成功' });

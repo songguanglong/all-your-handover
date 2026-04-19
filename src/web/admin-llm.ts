@@ -3,10 +3,7 @@ import { loadLLMProvidersConfig, saveLLMProvidersConfig } from '../services/conf
 import { encrypt } from '../utils/encryption';
 import { llmProviderFactory } from '../llm/llm-provider-factory';
 import { logger } from '../utils/logger';
-
-function sanitizeError(err: unknown): string {
-  return err instanceof Error ? err.message : 'Internal error';
-}
+import { sanitizeError } from './sanitize-error';
 
 const VALID_PROVIDER_TYPES = ['openai', 'deepseek', 'moonshot'];
 

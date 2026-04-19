@@ -11,10 +11,11 @@ import type {
 } from '../types';
 import { logger } from '../utils/logger';
 
-function request(url: string, options: { method: string; headers: Record<string, string> }, body?: string): Promise<string> {
+function request(url: string, options: { method: string; headers: Record<string, string>; timeout?: number }, body?: string): Promise<string> {
+  const timeout = options.timeout ?? 60000;
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
-    const req = protocol.request(url, options, (res) => {
+    const req = protocol.request(url, { ...options, timeout }, (res) => {
       let data = '';
       res.on('data', (chunk: string) => { data += chunk; });
       res.on('end', () => {
@@ -26,6 +27,7 @@ function request(url: string, options: { method: string; headers: Record<string,
       });
     });
     req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error(`请求超时 (${timeout}ms)`)); });
     if (body) req.write(body);
     req.end();
   });
@@ -80,26 +82,45 @@ export abstract class BaseLLMProvider implements LLMProvider {
 
   async transcribeAudio(params: TranscribeParams): Promise<string> {
     if (!this.supportsAudio) {
-      return '[当前 Provider 不支持语音转写]';
+      return '[当前 Provider 不支持语音处理]';
     }
-    // Use chat completion with a note about audio
+    // Try multimodal chat completion with audio input
+    const fs = await import('fs/promises');
+    const audioBuffer = await fs.readFile(params.audioPath);
+    const base64 = audioBuffer.toString('base64');
+    const ext = params.audioPath.split('.').pop()?.toLowerCase() ?? 'opus';
+    const format = ext === 'mp3' ? 'mp3' : ext === 'wav' ? 'wav' : ext === 'm4a' ? 'm4a' : 'opus';
+
     const messages = [
       { role: 'system', content: params.prompt },
-      { role: 'user', content: '请将上述语音内容转写为文字' },
+      {
+        role: 'user',
+        content: [
+          { type: 'input_audio', input_audio: { data: base64, format } },
+        ],
+      },
     ];
-    const result = await this.chatCompletion(messages);
-    return result;
+    return this.chatCompletion(messages);
   }
 
   async generateHandover(params: GenerateHandoverParams): Promise<string> {
+    const systemPrompt = params.systemPrompt
+      || '你是一个交接班助手。请根据以下模版和草稿内容，生成交接班记录。保持模版结构，用实际内容替换占位符。';
+
+    let contextBlock = '';
+    if (params.previousHandover) {
+      const dateLabel = params.previousHandover.date || '未知';
+      contextBlock = `\n\n--- 上一班交接记录 ---\n日期: ${dateLabel}\n${params.previousHandover.body}\n---`;
+    }
+
     const messages = [
-      { role: 'system', content: `你是一个酒店交接班助手。请根据以下模版和草稿内容，生成交接班记录。保持模版结构，用实际内容替换占位符。\n\n模版:\n${params.template}` },
+      { role: 'system', content: `${systemPrompt}\n\n模版:\n${params.template}${contextBlock}` },
       { role: 'user', content: `草稿内容:\n${params.draft}` },
     ];
     return this.chatCompletion(messages);
   }
 
-  protected async chatCompletion(messages: unknown[]): Promise<string> {
+  async chatCompletion(messages: Array<{ role: string; content: string | unknown[] }>): Promise<string> {
     const url = `${this.config.baseUrl}/chat/completions`;
     const body = JSON.stringify({
       model: this.config.model,

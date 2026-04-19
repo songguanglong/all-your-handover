@@ -47,9 +47,9 @@ export function registerWebhookRoutes(app: Express): void {
       if (command) {
         switch (command.type) {
           case 'HANDOVER_START':
-            await handleHandoverStart(command.sender, channel, chatId, channelCode, async (draft, template) => {
+            await handleHandoverStart(command.sender, channel, chatId, channelCode, async (draft, template, previousHandover, systemPrompt) => {
               if (llmProviderFactory.hasDefault()) {
-                return llmProviderFactory.getDefault().generateHandover({ draft, template });
+                return llmProviderFactory.getDefault().generateHandover({ draft, template, previousHandover: previousHandover ?? undefined, systemPrompt });
               }
               return draft;
             });
@@ -73,6 +73,15 @@ export function registerWebhookRoutes(app: Express): void {
         return res.json({ code: 0 });
       }
 
+      // If the message replies to another message, fetch parent content as context
+      let quotedContext: string | undefined;
+      if (message.parentId) {
+        const parentContent = await channel.fetchMessageContent(message.parentId);
+        if (parentContent) {
+          quotedContext = parentContent;
+        }
+      }
+
       // Enqueue LLM task through the App's queue
       const appInstance = getApp();
       const enqueueLLM = (code: string, task: LLMTask) => {
@@ -90,13 +99,13 @@ export function registerWebhookRoutes(app: Express): void {
 
       switch (message.type) {
         case 'text':
-          await handleTextMessage(message, channel, channelCode, enqueueLLM, getProvider);
+          await handleTextMessage(message, channel, channelCode, enqueueLLM, getProvider, quotedContext);
           break;
         case 'image':
-          await handleImageMessage(message, channel, channelCode, enqueueLLM, getProvider);
+          await handleImageMessage(message, channel, channelCode, enqueueLLM, getProvider, quotedContext);
           break;
         case 'audio':
-          await handleAudioMessage(message, channel, channelCode, enqueueLLM, getProvider);
+          await handleAudioMessage(message, channel, channelCode, enqueueLLM, getProvider, quotedContext);
           break;
       }
 

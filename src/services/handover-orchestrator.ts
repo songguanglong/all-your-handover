@@ -1,7 +1,8 @@
 import type { UserInfo, ChannelAdapter } from '../types';
 import { readDraft, clearDraft, parseDraftSections } from './draft-service';
 import { findPendingHandover as findPending, savePendingHandover as savePending, removePendingHandover as removePending, buildHandoverRecord, saveHandoverRecord, formatDate } from './handover-service';
-import { getChannelConfig, getTemplate } from './config-service';
+import { getChannelConfig, getTemplate, getSystemPrompt } from './config-service';
+import { getLatestHandover } from './context-service';
 import { buildDraftCard, buildHandoverCard, buildCompletionCard } from '../channels/feishu-card-builder';
 
 interface PendingHandoverData {
@@ -31,7 +32,7 @@ export async function handleHandoverStart(
   channel: ChannelAdapter,
   chatId: string,
   channelCode: string,
-  generateHandover: (draft: string, template: string) => Promise<string>
+  generateHandover: (draft: string, template: string, previousHandover?: { id: string; date: string; body: string } | null, systemPrompt?: string) => Promise<string>
 ): Promise<void> {
   const channelConfig = await getChannelConfig(channelCode);
 
@@ -48,7 +49,9 @@ export async function handleHandoverStart(
   }
 
   const template = await getTemplate(channelCode);
-  const handoverBody = await generateHandover(draft, template);
+  const previousHandover = await getLatestHandover(channelCode);
+  const systemPrompt = await getSystemPrompt(channelCode);
+  const handoverBody = await generateHandover(draft, template, previousHandover, systemPrompt);
 
   if (channelConfig?.settings.requireAccept) {
     // Mode A: need acceptance
@@ -147,5 +150,5 @@ export async function handleDraftView(
   }
 
   const { rawRecords, llmPreview } = parseDraftSections(draft);
-  await channel.sendCard(chatId, buildDraftCard(channelCode, channelDisplayName, rawRecords, llmPreview));
+  await channel.sendCard(chatId, buildDraftCard(channelCode, channelDisplayName, rawRecords, llmPreview, chatId));
 }

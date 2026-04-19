@@ -14,15 +14,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function renderPage(page) {
     main.innerHTML = '<div class="loading">加载中...</div>';
-    switch (page) {
-      case 'wizard': await renderWizard(); break;
-      case 'llm': await renderLLM(); break;
-      case 'platforms': await renderPlatforms(); break;
-      case 'channels': await renderChannels(); break;
-      case 'template': await renderTemplate(); break;
-      case 'handovers': await renderHandovers(); break;
-      case 'monitoring': await renderMonitoring(); break;
-      default: main.innerHTML = '<div class="card"><h2>404</h2><p>页面不存在</p></div>';
+    try {
+      switch (page) {
+        case 'wizard': await renderWizard(); break;
+        case 'llm': await renderLLM(); break;
+        case 'platforms': await renderPlatforms(); break;
+        case 'channels': await renderChannels(); break;
+        case 'template': await renderTemplate(); break;
+        case 'handovers': await renderHandovers(); break;
+        case 'monitoring': await renderMonitoring(); break;
+        default: main.innerHTML = '<div class="card"><h2>404</h2><p>页面不存在</p></div>';
+      }
+    } catch (err) {
+      main.innerHTML = `<div class="card"><h2>加载失败</h2><div class="error">${esc(err.message)}</div></div>`;
     }
   }
 
@@ -76,17 +80,29 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('w-next1').addEventListener('click', async () => {
-      await api.post('/llm-providers', {
-        name: document.getElementById('w-name').value,
-        type: document.getElementById('w-type').value,
-        apiKey: document.getElementById('w-key').value,
-        baseUrl: document.getElementById('w-url').value,
-        model: document.getElementById('w-model').value,
-        isDefault: true,
-      });
-      document.getElementById('step1').className = 'step done';
-      document.getElementById('step2').className = 'step active';
-      await renderWizardStep2();
+      const apiKey = document.getElementById('w-key').value.trim();
+      const name = document.getElementById('w-name').value.trim();
+      if (!name) { alert('请填写名称'); return; }
+      if (!apiKey) { alert('请填写 API Key'); return; }
+      const btn = document.getElementById('w-next1');
+      try {
+        btn.disabled = true;
+        await api.post('/llm-providers', {
+          name: document.getElementById('w-name').value,
+          type: document.getElementById('w-type').value,
+          apiKey,
+          baseUrl: document.getElementById('w-url').value,
+          model: document.getElementById('w-model').value,
+          isDefault: true,
+        });
+        document.getElementById('step1').className = 'step done';
+        document.getElementById('step2').className = 'step active';
+        await renderWizardStep2();
+      } catch (err) {
+        alert(`添加 LLM Provider 失败: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
     });
   }
 
@@ -100,14 +116,26 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="btn-group"><button class="btn btn-primary" id="w-next2">下一步</button></div>`;
 
     document.getElementById('w-next2').addEventListener('click', async () => {
-      await api.put('/platforms/feishu', {
-        appId: document.getElementById('w-appid').value,
-        appSecret: document.getElementById('w-appsecret').value,
-        verificationToken: document.getElementById('w-vtoken').value,
-      });
-      document.getElementById('step2').className = 'step done';
-      document.getElementById('step3').className = 'step active';
-      await renderWizardStep3();
+      const appId = document.getElementById('w-appid').value.trim();
+      const appSecret = document.getElementById('w-appsecret').value.trim();
+      const vtoken = document.getElementById('w-vtoken').value.trim();
+      if (!appId || !appSecret || !vtoken) { alert('请填写所有飞书配置项'); return; }
+      const btn = document.getElementById('w-next2');
+      try {
+        btn.disabled = true;
+        await api.put('/platforms/feishu', {
+          appId,
+          appSecret,
+          verificationToken: vtoken,
+        });
+        document.getElementById('step2').className = 'step done';
+        document.getElementById('step3').className = 'step active';
+        await renderWizardStep3();
+      } catch (err) {
+        alert(`配置飞书失败: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
     });
   }
 
@@ -121,16 +149,28 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="btn-group"><button class="btn btn-primary" id="w-next3">完成配置</button></div>`;
 
     document.getElementById('w-next3').addEventListener('click', async () => {
-      await api.post('/channels', {
-        code: document.getElementById('w-chcode').value,
-        type: 'feishu',
-        name: document.getElementById('w-chname').value,
-        chatId: document.getElementById('w-chatid').value,
-      });
-      document.getElementById('step3').className = 'step done';
-      document.getElementById('step4').className = 'step active';
+      const code = document.getElementById('w-chcode').value.trim();
+      const name = document.getElementById('w-chname').value.trim();
+      const chatId = document.getElementById('w-chatid').value.trim();
+      if (!code || !name || !chatId) { alert('请填写所有渠道配置项'); return; }
+      const btn = document.getElementById('w-next3');
+      try {
+        btn.disabled = true;
+        await api.post('/channels', {
+          code,
+          type: 'feishu',
+          name,
+          chatId,
+        });
+        document.getElementById('step3').className = 'step done';
+        document.getElementById('step4').className = 'step active';
       el.innerHTML = `<div class="success">配置完成！所有设置已保存。现在可以开始在群聊中使用交接班功能了。</div>
         <div class="btn-group"><a href="#llm" class="btn btn-default">前往 LLM 设置</a><a href="#monitoring" class="btn btn-primary">查看运行状态</a></div>`;
+      } catch (err) {
+        alert(`添加渠道失败: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
     });
   }
 
@@ -278,12 +318,58 @@ document.addEventListener('DOMContentLoaded', () => {
     const code = chList[0].code;
     const data = await api.get(`/channels/${code}/template`);
 
+    const placeholders = [
+      { name: 'important', desc: '重要事项内容（urgency=high 的消息汇总）' },
+      { name: 'normal', desc: '一般事项内容（urgency=normal 的消息汇总）' },
+      { name: 'follow_up', desc: '待跟进事项内容（urgency=low 的消息汇总）' },
+      { name: 'sender', desc: '交班人姓名' },
+      { name: 'receiver', desc: '接班人姓名' },
+      { name: 'date', desc: '交接日期' },
+      { name: 'channel', desc: '渠道名称' },
+    ];
+
     main.innerHTML = `
       <div class="card">
         <h2>交接模版编辑</h2>
         <div class="form-group"><label>渠道</label><select id="tmpl-channel">${chList.map(ch => `<option value="${ch.code}">${ch.name} (${ch.code})</option>`).join('')}</select></div>
+        <div class="form-group">
+          <label>可用占位符</label>
+          <div class="placeholder-list">${placeholders.map(p => `<span class="badge badge-info" title="${esc(p.desc)}">{{${p.name}}}</span>`).join(' ')}</div>
+        </div>
         <div class="form-group"><label>模版内容（Markdown，支持 {{变量名}} 占位符）</label><textarea id="tmpl-content">${data.data?.template || ''}</textarea></div>
-        <div class="btn-group"><button class="btn btn-primary" id="save-tmpl">保存</button><button class="btn btn-default" id="reset-tmpl">重置为默认</button></div>
+        <div id="tmpl-error"></div>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="save-tmpl">保存</button>
+          <button class="btn btn-default" id="reset-tmpl">重置为默认</button>
+          <button class="btn btn-default" id="preview-tmpl">预览</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>系统提示词</h2>
+        <p style="color:#666;font-size:13px;margin-bottom:8px;">LLM 生成交接文档时的系统提示词。可自定义角色和指令，影响所有交接生成的输出风格。</p>
+        <div id="interview-start-wrap">
+          <button class="btn btn-default" id="interview-start">通过对话生成提示词</button>
+          <span style="color:#999;font-size:13px;margin-left:8px;">回答几个问题，自动生成适合你的提示词</span>
+        </div>
+        <div id="interview-section" style="display:none;">
+          <div id="interview-chat" class="chat-container"></div>
+          <div class="chat-input-bar">
+            <input type="text" id="interview-input" class="chat-input" placeholder="输入你的回答...">
+            <button class="btn btn-primary btn-sm" id="interview-send">发送</button>
+            <button class="btn btn-success btn-sm" id="interview-apply" style="display:none;">采用此提示词</button>
+            <button class="btn btn-default btn-sm" id="interview-cancel">结束对话</button>
+          </div>
+        </div>
+        <div class="form-group"><label>系统提示词</label><textarea id="sp-content"></textarea></div>
+        <div id="sp-error"></div>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="save-sp">保存</button>
+          <button class="btn btn-default" id="reset-sp">重置为默认</button>
+        </div>
+      </div>
+      <div class="card" id="tmpl-preview" style="display:none;">
+        <h3>预览效果</h3>
+        <div id="tmpl-preview-content" style="white-space:pre-wrap;font-family:monospace;background:#f9f9f9;padding:12px;border-radius:4px;"></div>
       </div>`;
 
     document.getElementById('tmpl-channel').addEventListener('change', async (e) => {
@@ -293,22 +379,174 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('save-tmpl').addEventListener('click', async () => {
       const ch = document.getElementById('tmpl-channel').value;
-      await api.put(`/channels/${ch}/template`, { template: document.getElementById('tmpl-content').value });
-      alert('模版已保存');
+      const content = document.getElementById('tmpl-content').value;
+      const btn = document.getElementById('save-tmpl');
+      try {
+        btn.disabled = true;
+        await api.put(`/channels/${ch}/template`, { template: content });
+        document.getElementById('tmpl-error').innerHTML = '<div class="success">模版已保存</div>';
+      } catch (err) {
+        document.getElementById('tmpl-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
     });
 
     document.getElementById('reset-tmpl').addEventListener('click', async () => {
       const ch = document.getElementById('tmpl-channel').value;
-      const d = await api.put(`/channels/${ch}/template/reset`, {});
-      document.getElementById('tmpl-content').value = d.data?.template || '';
+      try {
+        const d = await api.put(`/channels/${ch}/template/reset`, {});
+        document.getElementById('tmpl-content').value = d.data?.template || '';
+      } catch (err) {
+        document.getElementById('tmpl-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      }
+    });
+
+    document.getElementById('preview-tmpl').addEventListener('click', () => {
+      const content = document.getElementById('tmpl-content').value;
+      const sampleData = { important: '（重要事项示例：302 房客人要求延迟退房）', normal: '（一般事项示例：今日早餐已备好）', follow_up: '（待跟进：3楼空调故障待修）', sender: '张三', receiver: '李四', date: new Date().toISOString().split('T')[0], channel: chList[0]?.name || '' };
+      let preview = content;
+      for (const [key, value] of Object.entries(sampleData)) {
+        preview = preview.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+      }
+      document.getElementById('tmpl-preview-content').textContent = preview;
+      document.getElementById('tmpl-preview').style.display = 'block';
+    });
+
+    // System prompt section
+    const spData = await api.get(`/channels/${code}/system-prompt`);
+    document.getElementById('sp-content').value = spData.data?.systemPrompt || '';
+
+    // Interview state
+    let interviewMessages = [];
+    let interviewActive = false;
+
+    function renderInterviewChat() {
+      const container = document.getElementById('interview-chat');
+      if (!container) return;
+      container.innerHTML = interviewMessages.map(m =>
+        m.role === 'assistant'
+          ? `<div class="chat-msg assistant">${esc(m.content).replace(/\n/g, '<br>')}</div>`
+          : `<div class="chat-msg user">${esc(m.content).replace(/\n/g, '<br>')}</div>`
+      ).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function sendInterviewMessage() {
+      const input = document.getElementById('interview-input');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      interviewMessages.push({ role: 'user', content: text });
+      renderInterviewChat();
+
+      const sendBtn = document.getElementById('interview-send');
+      sendBtn.disabled = true;
+      sendBtn.textContent = '思考中...';
+
+      try {
+        const res = await api.post(`/channels/${document.getElementById('tmpl-channel').value}/system-prompt/interview`, {
+          messages: interviewMessages,
+        });
+        interviewMessages.push({ role: 'assistant', content: res.data.reply });
+        renderInterviewChat();
+
+        if (res.data.proposedPrompt) {
+          document.getElementById('interview-apply').style.display = 'inline-block';
+          document.getElementById('interview-apply').dataset.prompt = res.data.proposedPrompt;
+        }
+      } catch (err) {
+        interviewMessages.push({ role: 'assistant', content: `出错了: ${err.message}` });
+        renderInterviewChat();
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = '发送';
+      }
+    }
+
+    function startInterview() {
+      interviewActive = true;
+      interviewMessages = [];
+      document.getElementById('interview-section').style.display = 'block';
+      document.getElementById('interview-start-wrap').style.display = 'none';
+      // Kick off with an empty first message to get the initial question
+      interviewMessages.push({ role: 'user', content: '开始' });
+      renderInterviewChat();
+      sendInterviewMessage();
+    }
+
+    document.getElementById('interview-start').addEventListener('click', startInterview);
+
+    document.getElementById('interview-send').addEventListener('click', sendInterviewMessage);
+
+    document.getElementById('interview-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendInterviewMessage();
+      }
+    });
+
+    document.getElementById('interview-apply').addEventListener('click', () => {
+      const prompt = document.getElementById('interview-apply').dataset.prompt;
+      if (prompt) {
+        document.getElementById('sp-content').value = prompt;
+        document.getElementById('sp-content').scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+
+    document.getElementById('interview-cancel').addEventListener('click', () => {
+      interviewActive = false;
+      interviewMessages = [];
+      document.getElementById('interview-section').style.display = 'none';
+      document.getElementById('interview-start-wrap').style.display = 'block';
+      document.getElementById('interview-apply').style.display = 'none';
+    });
+
+    document.getElementById('tmpl-channel').addEventListener('change', async (e) => {
+      const d = await api.get(`/channels/${e.target.value}/system-prompt`);
+      document.getElementById('sp-content').value = d.data?.systemPrompt || '';
+      // Reset interview
+      interviewActive = false;
+      interviewMessages = [];
+      document.getElementById('interview-section').style.display = 'none';
+      document.getElementById('interview-start-wrap').style.display = 'block';
+      document.getElementById('interview-apply').style.display = 'none';
+    });
+
+    document.getElementById('save-sp').addEventListener('click', async () => {
+      const ch = document.getElementById('tmpl-channel').value;
+      const content = document.getElementById('sp-content').value;
+      const btn = document.getElementById('save-sp');
+      try {
+        btn.disabled = true;
+        await api.put(`/channels/${ch}/system-prompt`, { systemPrompt: content });
+        document.getElementById('sp-error').innerHTML = '<div class="success">系统提示词已保存</div>';
+      } catch (err) {
+        document.getElementById('sp-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('reset-sp').addEventListener('click', async () => {
+      const ch = document.getElementById('tmpl-channel').value;
+      try {
+        const d = await api.put(`/channels/${ch}/system-prompt/reset`, {});
+        document.getElementById('sp-content').value = d.data?.systemPrompt || '';
+      } catch (err) {
+        document.getElementById('sp-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      }
     });
   }
 
   // --- Handovers ---
-  async function renderHandovers() {
-    const data = await api.get('/handovers?page=1&pageSize=20');
+  async function renderHandovers(page) {
+    page = page || 1;
+    const pageSize = 20;
+    const data = await api.get(`/handovers?page=${page}&pageSize=${pageSize}`);
     const records = data.data?.records || [];
     const total = data.data?.total || 0;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
     let rows = records.map(r => `
       <tr>
@@ -319,13 +557,21 @@ document.addEventListener('DOMContentLoaded', () => {
         <td><span class="badge ${r.status === 'completed' ? 'badge-success' : 'badge-warning'}">${r.status || ''}</span></td>
       </tr>`).join('');
 
+    const prevBtn = page > 1 ? `<button class="btn btn-sm btn-default" onclick="renderHandovers(${page - 1})">上一页</button>` : '';
+    const nextBtn = page < totalPages ? `<button class="btn btn-sm btn-primary" onclick="renderHandovers(${page + 1})">下一页</button>` : '';
+
     main.innerHTML = `
       <div class="card">
         <h2>交接记录查询</h2>
         <table><thead><tr><th>渠道</th><th>交班人</th><th>接班人</th><th>时间</th><th>状态</th></tr></thead><tbody>${rows || '<tr><td colspan="5">暂无记录</td></tr>'}</tbody></table>
-        <div class="pagination"><span class="page-info">共 ${total} 条记录</span></div>
+        <div class="pagination">
+          <span class="page-info">共 ${total} 条记录 · 第 ${page}/${totalPages} 页</span>
+          ${prevBtn} ${nextBtn}
+        </div>
       </div>`;
   }
+
+  window.renderHandovers = renderHandovers;
 
   // --- Monitoring ---
   async function renderMonitoring() {

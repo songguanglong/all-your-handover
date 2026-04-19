@@ -1,4 +1,5 @@
 import simpleGit, { SimpleGit } from 'simple-git';
+import { logger } from '../utils/logger';
 
 export class GitManager {
   private repo: SimpleGit;
@@ -35,9 +36,32 @@ export class GitManager {
           // No changes to commit — not an error
         }
       } catch (err) {
-        // Git errors are non-critical — don't block the application
-        console.error(`Git auto-commit failed: ${err instanceof Error ? err.message : String(err)}`);
+        logger.error(`Git auto-commit failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }, 30000);
+  }
+
+  async flush(): Promise<void> {
+    if (this.commitTimer) {
+      clearTimeout(this.commitTimer);
+      this.commitTimer = null;
+    }
+    if (this.pendingMessages.length === 0) return;
+
+    const messages = [...this.pendingMessages];
+    this.pendingMessages = [];
+    try {
+      await this.repo.add('.');
+      const msg = messages.length === 1
+        ? messages[0]
+        : `${messages[0]} 等 ${messages.length} 条操作`;
+      try {
+        await this.repo.commit(msg);
+      } catch {
+        // No changes to commit
+      }
+    } catch (err) {
+      logger.error(`Git flush failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }

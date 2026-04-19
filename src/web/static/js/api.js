@@ -6,10 +6,25 @@ function esc(str) {
   return d.innerHTML;
 }
 
+function showError(containerId, message) {
+  const el = document.getElementById(containerId);
+  if (el) {
+    el.innerHTML = `<div class="error">${esc(message)}</div>`;
+  }
+}
+
+async function handleResponse(res) {
+  const data = await res.json().catch(() => ({ code: -1, message: `请求失败 (HTTP ${res.status})` }));
+  if (!res.ok) {
+    throw new Error(data.message || `请求失败 (HTTP ${res.status})`);
+  }
+  return data;
+}
+
 const api = {
   async get(path) {
     const res = await fetch(`${API_BASE}${path}`);
-    return res.json();
+    return handleResponse(res);
   },
 
   async post(path, data) {
@@ -18,20 +33,20 @@ const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    return res.json();
+    return handleResponse(res);
   },
 
   async put(path, data) {
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body: data !== undefined ? JSON.stringify(data) : undefined,
     });
-    return res.json();
+    return handleResponse(res);
   },
 
   async del(path) {
     const res = await fetch(`${API_BASE}${path}`, { method: 'DELETE' });
-    return res.json();
+    return handleResponse(res);
   },
 };

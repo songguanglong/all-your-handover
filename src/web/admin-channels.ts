@@ -4,9 +4,8 @@ import path from 'path';
 import { loadChannelsConfig, saveChannelsConfig } from '../services/config-service';
 import { channelFactory } from '../channels/channel-factory';
 import { logger } from '../utils/logger';
-
+import { sanitizeError } from './sanitize-error';
 import { getDataDir } from '../utils/data-dir';
-function sanitizeError(err: unknown): string { return err instanceof Error ? err.message : 'Internal error'; }
 
 export function registerChannelRoutes(router: import('express').Router, prefix: string): void {
   router.get(`${prefix}/channels`, async (_req: Request, res: Response) => {
