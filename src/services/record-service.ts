@@ -1,32 +1,47 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { Message, ChannelAdapter, AnalyzeResult, LLMTask, LLMProvider } from '../types';
-import { appendToDraft, updateDraftAnalysis } from './draft-service';
-import { getChannelConfig } from './config-service';
-import { getSoul, buildSoulPrompt } from './agent-soul-service';
+import type { Message, ChannelAdapter, AnalyzeResult, LLMTask, LLMProvider, RawRecord, AnalysisItem } from '../types';
+import { appendRawRecord } from './draft-raw-service';
+import { updateAnalysis } from './draft-analysis-service';
+import { incrementalUpdatePreview } from './draft-preview-service';
+import { validateAnalysis } from './analysis-validator';
+import { getSoul, buildSoulPrompt } from './soul-service';
+import { getAgents, buildAgentsPrompt } from './agents-service';
 import { addReaction } from './reaction-service';
 import { logger } from '../utils/logger';
 import { getDataDir } from '../utils/data-dir';
 
-const TEXT_ANALYSIS_PROMPT = '分析以下酒店交接班消息，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}';
-const IMAGE_ANALYSIS_PROMPT = '描述这张酒店交接班相关图片的内容。返回JSON: {"category":"类别","content":"描述","urgency":"high/normal/low"}';
-const AUDIO_ANALYSIS_PROMPT = '分析以下酒店交接班语音内容，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}';
-const AUDIO_TRANSCRIPTION_PROMPT = '转写这段酒店交接班语音内容。';
+const TEXT_ANALYSIS_PROMPT = '分析以下交接班消息，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}';
+const IMAGE_ANALYSIS_PROMPT = '描述这张交接班相关图片的内容。返回JSON: {"category":"类别","content":"描述","urgency":"high/normal/low"}';
+const AUDIO_ANALYSIS_PROMPT = '分析以下交接班语音内容，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}';
+const AUDIO_TRANSCRIPTION_PROMPT = '转写这段交接班语音内容。';
 
-function noProviderFallback(text: string): () => Promise<unknown> {
+function noProviderFallback(text: string): () => Promise<AnalyzeResult> {
   return () => Promise.resolve({ category: '未分类', content: text, urgency: 'normal' });
 }
 
-function toAnalyzeResult(raw: unknown): AnalyzeResult {
-  if (typeof raw === 'object' && raw !== null && 'category' in raw && 'content' in raw) {
-    return raw as AnalyzeResult;
-  }
-  return { category: '未分类', content: String(raw), urgency: 'normal' };
+function toAnalysisItem(msgId: string, result: AnalyzeResult): AnalysisItem {
+  return { msgId, ...result };
+}
+
+async function buildContextPrompt(channelCode: string): Promise<string> {
+  const soul = await getSoul(channelCode);
+  const agents = await getAgents(channelCode);
+  return buildSoulPrompt(soul, buildAgentsPrompt(agents));
 }
 
 function buildPromptWithQuote(basePrompt: string, quotedContext?: string): string {
   if (!quotedContext) return basePrompt;
   return `${basePrompt}\n\n以下是该消息引用的上一条消息内容，请结合引用内容理解当前消息的上下文:\n${quotedContext}`;
+}
+
+function handleAnalysisResult(channelCode: string, messageId: string, rawResult: unknown, originalText: string): Promise<void> {
+  const validated = validateAnalysis(rawResult, originalText);
+  const item = toAnalysisItem(messageId, validated);
+  return Promise.all([
+    updateAnalysis(channelCode, item),
+    incrementalUpdatePreview(channelCode, item),
+  ]).then(() => {});
 }
 
 export async function handleTextMessage(
@@ -41,27 +56,28 @@ export async function handleTextMessage(
 
   await addReaction(channel, message.id, '🤔');
 
-  await appendToDraft(channelCode, {
-    messageId: message.id,
+  const record: RawRecord = {
+    id: message.id,
+    ts: new Date(message.timestamp).toISOString(),
+    sender: message.sender.id,
+    sender_name: message.sender.name,
     type: 'text',
-    sender: message.sender,
-    rawContent: text,
-    analysis: null,
-    status: 'pending_analysis',
-    timestamp: new Date(),
-  });
+    content: text,
+    quoted_context: quotedContext ?? null,
+  };
+  await appendRawRecord(channelCode, record);
 
   const prompt = buildPromptWithQuote(TEXT_ANALYSIS_PROMPT, quotedContext);
-  const soul = await getSoul(channelCode);
-  const soulPrompt = buildSoulPrompt(soul);
+  const soulPrompt = await buildContextPrompt(channelCode);
   const provider = getProvider();
   enqueueLLM(channelCode, {
     execute: provider
       ? () => provider.analyzeText({ text, prompt, soulPrompt })
       : noProviderFallback(text),
     onSuccess: (analysis: unknown) => {
-      updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis));
-      addReaction(channel, message.id, '✅');
+      handleAnalysisResult(channelCode, message.id, analysis, text)
+        .then(() => addReaction(channel, message.id, '✅'))
+        .catch(err => logger.error(`写入分析结果失败: ${err instanceof Error ? err.message : err}`));
     },
     onFailure: (err: Error) => logger.error(`LLM 分析失败: ${err.message}`),
   });
@@ -87,27 +103,28 @@ export async function handleImageMessage(
 
   await addReaction(channel, message.id, '🤔');
 
-  await appendToDraft(channelCode, {
-    messageId: message.id,
+  const record: RawRecord = {
+    id: message.id,
+    ts: new Date(message.timestamp).toISOString(),
+    sender: message.sender.id,
+    sender_name: message.sender.name,
     type: 'image',
-    sender: message.sender,
-    rawContent: `[图片: ${imagePath}]`,
-    analysis: null,
-    status: 'pending_analysis',
-    timestamp: new Date(),
-  });
+    content: `[图片: ${imagePath}]`,
+    quoted_context: quotedContext ?? null,
+  };
+  await appendRawRecord(channelCode, record);
 
   const prompt = buildPromptWithQuote(IMAGE_ANALYSIS_PROMPT, quotedContext);
-  const soul = await getSoul(channelCode);
-  const soulPrompt = buildSoulPrompt(soul);
+  const soulPrompt = await buildContextPrompt(channelCode);
   const provider = getProvider();
   enqueueLLM(channelCode, {
     execute: provider
       ? () => provider.analyzeImage({ imagePath, prompt, soulPrompt })
       : noProviderFallback(`[图片: ${imagePath}]`),
     onSuccess: (analysis: unknown) => {
-      updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis));
-      addReaction(channel, message.id, '✅');
+      handleAnalysisResult(channelCode, message.id, analysis, `[图片: ${imagePath}]`)
+        .then(() => addReaction(channel, message.id, '✅'))
+        .catch(err => logger.error(`写入分析结果失败: ${err instanceof Error ? err.message : err}`));
     },
     onFailure: (err: Error) => logger.error(`LLM 图片分析失败: ${err.message}`),
   });
@@ -133,25 +150,26 @@ export async function handleAudioMessage(
 
   await addReaction(channel, message.id, '🤔');
 
-  await appendToDraft(channelCode, {
-    messageId: message.id,
+  const record: RawRecord = {
+    id: message.id,
+    ts: new Date(message.timestamp).toISOString(),
+    sender: message.sender.id,
+    sender_name: message.sender.name,
     type: 'audio',
-    sender: message.sender,
-    rawContent: '[语音消息]',
-    analysis: null,
-    status: 'pending_analysis',
-    timestamp: new Date(),
-  });
+    content: '[语音消息]',
+    quoted_context: quotedContext ?? null,
+  };
+  await appendRawRecord(channelCode, record);
 
-  const soul = await getSoul(channelCode);
-  const soulPrompt = buildSoulPrompt(soul);
+  const soulPrompt = await buildContextPrompt(channelCode);
   const provider = getProvider();
   if (!provider) {
     enqueueLLM(channelCode, {
       execute: noProviderFallback('[语音消息]'),
       onSuccess: (analysis: unknown) => {
-        updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis));
-        addReaction(channel, message.id, '✅');
+        handleAnalysisResult(channelCode, message.id, analysis, '[语音消息]')
+          .then(() => addReaction(channel, message.id, '✅'))
+          .catch(err => logger.error(`写入分析结果失败: ${err instanceof Error ? err.message : err}`));
       },
       onFailure: (err: Error) => logger.error(`LLM 分析失败: ${err.message}`),
     });
@@ -171,8 +189,9 @@ export async function handleAudioMessage(
       }
     },
     onSuccess: (analysis: unknown) => {
-      updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis));
-      addReaction(channel, message.id, '✅');
+      handleAnalysisResult(channelCode, message.id, analysis, '[语音消息]')
+        .then(() => addReaction(channel, message.id, '✅'))
+        .catch(err => logger.error(`写入分析结果失败: ${err instanceof Error ? err.message : err}`));
     },
     onFailure: (err: Error) => logger.error(`LLM 语音分析失败: ${err.message}`),
   });

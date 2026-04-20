@@ -3,6 +3,8 @@ import path from 'path';
 import http from 'http';
 import { registerWebhookRoutes } from './channels/webhook';
 import { registerAdminRoutes } from './web/admin';
+import { registerH5Routes } from './web/h5-api';
+import { registerH5AuthRoutes } from './web/h5-auth';
 import { logger } from './utils/logger';
 
 declare global {
@@ -27,11 +29,18 @@ export async function startServer(port: number): Promise<http.Server> {
   const staticDir = path.join(__dirname, 'web/static');
   app.use('/admin', express.static(staticDir));
 
+  // H5 frontend (handover interaction)
+  app.use('/h5', express.static(path.join(staticDir, 'h5')));
+
   // Feishu Webhook
   registerWebhookRoutes(app);
 
   // Admin API
   registerAdminRoutes(app);
+
+  // H5 API
+  registerH5Routes(app, '/api/h5');
+  registerH5AuthRoutes(app, '/api/h5');
 
   // Health check
   app.get('/health', (_req, res) => {
@@ -42,6 +51,7 @@ export async function startServer(port: number): Promise<http.Server> {
     const server = app.listen(port, () => {
       logger.info(`All Your Handover 已启动: http://localhost:${port}`);
       logger.info(`管理后台: http://localhost:${port}/admin`);
+      logger.info(`交接班H5: http://localhost:${port}/h5`);
       resolve(server);
     });
   });

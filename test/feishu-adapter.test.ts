@@ -26,22 +26,19 @@ describe('FeishuAdapter', () => {
       expect(cmd?.type).toBe('HANDOVER_START');
     });
 
-    it('parses 接班 command', () => {
+    it('returns null for 接班 (removed command)', () => {
       const msg = { ...baseMessage, content: { type: 'text' as const, text: '接班' } };
-      const cmd = adapter.parseCommand(msg);
-      expect(cmd?.type).toBe('HANDOVER_ACCEPT');
+      expect(adapter.parseCommand(msg)).toBeNull();
     });
 
-    it('parses 取消 command', () => {
+    it('returns null for 取消 (removed command)', () => {
       const msg = { ...baseMessage, content: { type: 'text' as const, text: '取消' } };
-      const cmd = adapter.parseCommand(msg);
-      expect(cmd?.type).toBe('HANDOVER_CANCEL');
+      expect(adapter.parseCommand(msg)).toBeNull();
     });
 
-    it('parses 草稿 command', () => {
+    it('returns null for 草稿 (removed command)', () => {
       const msg = { ...baseMessage, content: { type: 'text' as const, text: '草稿' } };
-      const cmd = adapter.parseCommand(msg);
-      expect(cmd?.type).toBe('DRAFT_VIEW');
+      expect(adapter.parseCommand(msg)).toBeNull();
     });
 
     it('returns null for non-command text', () => {

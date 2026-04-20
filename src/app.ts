@@ -6,8 +6,13 @@ import { initDirectories } from './utils/init';
 import { logger } from './utils/logger';
 import { getDataDir } from './utils/data-dir';
 import { setAutoCommit as setDraftAutoCommit } from './services/draft-service';
+import { setAutoCommit as setDraftRawAutoCommit } from './services/draft-raw-service';
+import { setAutoCommit as setDraftAnalysisAutoCommit } from './services/draft-analysis-service';
+import { setAutoCommit as setDraftPreviewAutoCommit } from './services/draft-preview-service';
 import { setAutoCommit as setHandoverAutoCommit } from './services/handover-service';
 import { setAutoCommit as setSoulAutoCommit } from './services/agent-soul-service';
+import { setAutoCommit as setNewSoulAutoCommit } from './services/soul-service';
+import { setAutoCommit as setAgentsAutoCommit } from './services/agents-service';
 import { setAutoCommit as setExperienceAutoCommit } from './services/experience-service';
 import { setAutoCommit as setDreamAutoCommit } from './services/dream-service';
 import { shouldRunDream, runDream } from './services/dream-service';
@@ -40,8 +45,13 @@ export class App {
     // Wire up auto-commit to GitManager
     const gitAutoCommit = this.git.autoCommit.bind(this.git);
     setDraftAutoCommit(gitAutoCommit);
+    setDraftRawAutoCommit(gitAutoCommit);
+    setDraftAnalysisAutoCommit(gitAutoCommit);
+    setDraftPreviewAutoCommit(gitAutoCommit);
     setHandoverAutoCommit(gitAutoCommit);
     setSoulAutoCommit(gitAutoCommit);
+    setNewSoulAutoCommit(gitAutoCommit);
+    setAgentsAutoCommit(gitAutoCommit);
     setExperienceAutoCommit(gitAutoCommit);
     setDreamAutoCommit(gitAutoCommit);
 

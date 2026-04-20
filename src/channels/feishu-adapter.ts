@@ -151,18 +151,11 @@ export class FeishuAdapter implements ChannelAdapter {
 
     const keyword = text.replace(/@\S+/g, '').trim();
 
-    switch (true) {
-      case /交班/.test(keyword):
-        return { type: 'HANDOVER_START', sender: message.sender };
-      case /接班/.test(keyword):
-        return { type: 'HANDOVER_ACCEPT', sender: message.sender };
-      case /取消/.test(keyword):
-        return { type: 'HANDOVER_CANCEL', sender: message.sender };
-      case /草稿/.test(keyword):
-        return { type: 'DRAFT_VIEW', sender: message.sender };
-      default:
-        return null;
+    if (/交班/.test(keyword)) {
+      return { type: 'HANDOVER_START', sender: message.sender };
     }
+
+    return null;
   }
 
   async getUserInfo(userId: string): Promise<UserInfo> {

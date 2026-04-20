@@ -53,7 +53,7 @@ export interface Message {
 
 // --- Commands ---
 
-export type CommandType = 'HANDOVER_START' | 'HANDOVER_ACCEPT' | 'HANDOVER_CANCEL' | 'DRAFT_VIEW';
+export type CommandType = 'HANDOVER_START';
 
 export interface Command {
   type: CommandType;
@@ -207,7 +207,7 @@ export interface LLMTask {
   thinkingMode?: ThinkingMode;
 }
 
-// --- Draft ---
+// --- Draft (legacy, used by draft-service.ts) ---
 
 export interface DraftRecord {
   messageId: string;
@@ -217,6 +217,37 @@ export interface DraftRecord {
   analysis: AnalyzeResult | null;
   status: 'pending_analysis' | 'analyzed';
   timestamp: Date;
+}
+
+// --- Draft Storage (new Harness structure) ---
+
+export interface RawRecord {
+  id: string;
+  ts: string;
+  sender: string;
+  sender_name: string;
+  type: ContentType;
+  content: string;
+  quoted_context: string | null;
+}
+
+export interface AnalysisItem {
+  msgId: string;
+  category: string;
+  content: string;
+  urgency: 'high' | 'normal' | 'low';
+}
+
+export interface AnalysisFile {
+  lastUpdated: string;
+  messageCount: number;
+  items: AnalysisItem[];
+}
+
+export interface CompletenessCheckResult {
+  totalRaw: number;
+  totalAnalyzed: number;
+  missing: number;
 }
 
 // --- Handover ---
@@ -229,7 +260,6 @@ export interface PendingHandover {
   };
   content: string;
   createdAt: string;
-  llmVersion?: string;
 }
 
 export interface HandoverMeta {

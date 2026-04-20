@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>交接班</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 16px; }
+    .header { text-align: center; padding: 16px 0; font-size: 18px; font-weight: 600; }
+    .completeness { background: #fff3cd; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+    .completeness.ok { background: #d4edda; }
+    .preview { background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; min-height: 200px; }
+    .preview h1 { font-size: 18px; margin-bottom: 12px; }
+    .preview h2 { font-size: 16px; margin-top: 16px; margin-bottom: 8px; color: #1a73e8; }
+    .preview ul { padding-left: 20px; }
+    .preview li { margin-bottom: 4px; line-height: 1.6; }
+    .editor { width: 100%; min-height: 300px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 14px; line-height: 1.6; font-family: inherit; resize: vertical; }
+    .actions { display: flex; gap: 12px; margin-top: 16px; }
+    .btn { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+    .btn-primary { background: #1a73e8; color: white; }
+    .btn-secondary { background: #f1f3f4; color: #333; }
+    .btn-danger { background: #ea4335; color: white; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { text-align: center; padding: 24px; font-size: 14px; color: #666; }
+    .pending-info { background: #e8f0fe; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+    .pending-info h3 { margin-bottom: 8px; }
+    .error { background: #fce8e6; padding: 12px; border-radius: 8px; margin-bottom: 16px; color: #c5221f; }
+    #editBtn { background: #f1f3f4; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">交接班</div>
+    <div id="error" class="error" style="display:none"></div>
+    <div id="status" class="status">加载中...</div>
+    <div id="content" style="display:none">
+      <div id="completeness" class="completeness" style="display:none"></div>
+
+      <!-- No pending handover: show draft -->
+      <div id="draftView">
+        <button id="editBtn" onclick="toggleEdit()">编辑</button>
+        <div id="previewDisplay" class="preview"></div>
+        <div id="previewEditor" style="display:none">
+          <textarea id="editorArea" class="editor"></textarea>
+          <div style="margin-top:8px;text-align:right">
+            <button class="btn btn-secondary" onclick="savePreview()" style="flex:none;padding:8px 16px">保存</button>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="startHandover()">确认交班</button>
+        </div>
+      </div>
+
+      <!-- Pending handover: show accept/reject -->
+      <div id="pendingView" style="display:none">
+        <div class="pending-info">
+          <h3>待接班</h3>
+          <p id="senderInfo"></p>
+          <p id="createdAtInfo"></p>
+        </div>
+        <div id="pendingPreview" class="preview"></div>
+        <div class="actions">
+          <button class="btn btn-primary" onclick="acceptHandover()">确认接班</button>
+          <button class="btn btn-danger" onclick="rejectHandover()">打回</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api/h5';
+    let channelCode = '';
+    let editing = false;
+
+    function getChannelCode() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('code') || '';
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    function hideError() {
+      document.getElementById('error').style.display = 'none';
+    }
+
+    async function loadDraft() {
+      hideError();
+      try {
+        const res = await fetch(`${API_BASE}/draft/${channelCode}`);
+        const data = await res.json();
+        if (data.code !== 0) {
+          showError(data.message || '加载失败');
+          return;
+        }
+
+        const d = data.data;
+        document.getElementById('status').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+
+        // Completeness check
+        const compEl = document.getElementById('completeness');
+        if (d.missingCount > 0) {
+          compEl.textContent = `还有 ${d.missingCount} 条消息未分析（共 ${d.rawCount} 条）`;
+          compEl.className = 'completeness';
+          compEl.style.display = 'block';
+        } else {
+          compEl.textContent = `全部 ${d.rawCount} 条消息已分析`;
+          compEl.className = 'completeness ok';
+          compEl.style.display = 'block';
+        }
+
+        // Render preview
+        const previewEl = document.getElementById('previewDisplay');
+        previewEl.innerHTML = renderMarkdown(d.preview || '暂无内容');
+        document.getElementById('editorArea').value = d.preview || '';
+      } catch (err) {
+        showError('网络错误，请重试');
+      }
+    }
+
+    async function checkPending() {
+      try {
+        // Try to load draft first
+        await loadDraft();
+      } catch (err) {
+        showError('加载失败');
+      }
+    }
+
+    function renderMarkdown(text) {
+      // Simple markdown rendering for preview
+      return text
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/\n{2,}/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+    }
+
+    function toggleEdit() {
+      editing = !editing;
+      document.getElementById('previewDisplay').style.display = editing ? 'none' : 'block';
+      document.getElementById('previewEditor').style.display = editing ? 'block' : 'none';
+      document.getElementById('editBtn').textContent = editing ? '查看' : '编辑';
+      if (editing) {
+        document.getElementById('editorArea').focus();
+      }
+    }
+
+    async function savePreview() {
+      const content = document.getElementById('editorArea').value;
+      try {
+        const res = await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          // Reload to show updated preview
+          await loadDraft();
+          editing = false;
+          document.getElementById('previewDisplay').style.display = 'block';
+          document.getElementById('previewEditor').style.display = 'none';
+          document.getElementById('editBtn').textContent = '编辑';
+        } else {
+          showError(data.message || '保存失败');
+        }
+      } catch (err) {
+        showError('网络错误');
+      }
+    }
+
+    async function startHandover() {
+      if (!confirm('确认发起交班？')) return;
+      try {
+        const res = await fetch(`${API_BASE}/handover/${channelCode}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          alert('交班已发起');
+          location.reload();
+        } else {
+          showError(data.message || data.data?.message || '交班失败');
+        }
+      } catch (err) {
+        showError('网络错误');
+      }
+    }
+
+    async function acceptHandover() {
+      if (!confirm('确认接班？')) return;
+      try {
+        const res = await fetch(`${API_BASE}/handover/${channelCode}/accept`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ receiverId: 'h5_user', receiverName: '接班人' }),
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          alert('接班确认成功');
+          location.reload();
+        } else {
+          showError(data.message || data.data?.message || '接班确认失败');
+        }
+      } catch (err) {
+        showError('网络错误');
+      }
+    }
+
+    async function rejectHandover() {
+      if (!confirm('确认打回？交班人需要重新编辑草稿。')) return;
+      try {
+        const res = await fetch(`${API_BASE}/handover/${channelCode}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          alert('已打回');
+          location.reload();
+        } else {
+          showError(data.message || '打回失败');
+        }
+      } catch (err) {
+        showError('网络错误');
+      }
+    }
+
+    // Init
+    channelCode = getChannelCode();
+    if (!channelCode) {
+      document.getElementById('status').textContent = '缺少渠道参数';
+    } else {
+      checkPending();
+    }
+  </script>
+</body>
+</html>

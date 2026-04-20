@@ -3,7 +3,7 @@ import { verifyFeishuSignature } from './feishu-signature';
 import { channelFactory } from './channel-factory';
 import { findChannelCodeByChatId, getChannelConfig } from '../services/config-service';
 import { handleTextMessage, handleImageMessage, handleAudioMessage } from '../services/record-service';
-import { handleHandoverStart, handleHandoverAccept, handleHandoverCancel, handleDraftView } from '../services/handover-orchestrator';
+import { handleHandoverStart } from '../services/handover-orchestrator';
 import { handleCardAction } from '../services/card-callback-service';
 import { llmProviderFactory } from '../llm/llm-provider-factory';
 import { addReaction } from '../services/reaction-service';
@@ -50,31 +50,7 @@ export function registerWebhookRoutes(app: Express): void {
 
         switch (command.type) {
           case 'HANDOVER_START':
-            await handleHandoverStart(command.sender, channel, chatId, channelCode, async (draft, template, previousHandover, systemPrompt, soulPrompt, experiencePrompt) => {
-              if (llmProviderFactory.hasDefault()) {
-                return llmProviderFactory.getDefault().generateHandover({
-                  draft, template, previousHandover: previousHandover ?? undefined, systemPrompt, soulPrompt, experiencePrompt,
-                });
-              }
-              return draft;
-            });
-            break;
-          case 'HANDOVER_ACCEPT': {
-            const getChatCompletion = () => {
-              if (llmProviderFactory.hasDefault()) {
-                const provider = llmProviderFactory.getDefault();
-                return (messages: Array<{ role: string; content: string }>) => provider.chatCompletion(messages, 'standard');
-              }
-              return null;
-            };
-            await handleHandoverAccept(command.sender, channel, chatId, channelCode, getChatCompletion);
-            break;
-          }
-          case 'HANDOVER_CANCEL':
-            await handleHandoverCancel(command.sender, channel, chatId, channelCode);
-            break;
-          case 'DRAFT_VIEW':
-            await handleDraftView(command.sender, channel, chatId, channelCode);
+            await handleHandoverStart(command.sender, channel, chatId, channelCode);
             break;
         }
         return res.json({ code: 0 });
