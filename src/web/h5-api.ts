@@ -6,6 +6,12 @@ import { handleHandoverStart, handleHandoverAccept, handleHandoverReject } from 
 import { findPendingHandover, removePendingHandover } from '../services/handover-service';
 import { getChannelConfig } from '../services/config-service';
 import { channelFactory } from '../channels/channel-factory';
+import { detectDiffs } from '../services/diff-detector';
+import { recordDiffCandidate } from '../services/channel-memory-service';
+import { analyzeEditIntent, addEntry } from '../services/experience-service';
+import { llmProviderFactory } from '../llm/llm-provider-factory';
+import { logger } from '../utils/logger';
+import type { AnalysisItem } from '../types';
 
 interface DraftResponse {
   preview: string | null;
@@ -73,7 +79,69 @@ export function registerH5Routes(router: Router, prefix: string): void {
         return res.status(400).json({ code: -1, message: '内容必须是字符串' });
       }
 
+      // Read old state before overwrite (for diff detection + experience learning)
+      const oldPreview = await readPreview(channelCode);
+      const analysis = await readAnalysis(channelCode);
+
       await updatePreview(channelCode, content);
+
+      // P1-2: Diff detection on preview save
+      if (oldPreview && analysis.items.length > 0) {
+        const URGENCY_LABEL: Record<string, string> = { high: '紧急', normal: '一般', low: '低' };
+        for (const item of analysis.items) {
+          const marker = `<!-- msg:${item.msgId} -->`;
+          if (!content.includes(marker)) {
+            // Marker removed — user modified or deleted this item
+            await recordDiffCandidate(channelCode, {
+              type: 'content',
+              msgId: item.msgId,
+              from: item.content,
+              to: '(用户编辑/删除)',
+              label: '',
+              timestamp: new Date().toISOString(),
+            });
+          } else {
+            // Marker still present — parse the line and compare
+            const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const lineRegex = new RegExp(`^- (.+?) \\((.+?)\\) <!-- msg:${escapeRegex(item.msgId)} -->$`, 'm');
+            const match = content.match(lineRegex);
+            if (match) {
+              const newUrgencyKey = (Object.entries(URGENCY_LABEL).find(([, v]) => v === match[2])?.[0] ?? 'normal') as 'high' | 'normal' | 'low';
+              const modified: AnalysisItem = {
+                msgId: item.msgId,
+                category: item.category,
+                content: match[1],
+                urgency: newUrgencyKey,
+              };
+              const diffs = detectDiffs(item, modified);
+              for (const diff of diffs) {
+                await recordDiffCandidate(channelCode, diff);
+              }
+            }
+          }
+        }
+      }
+
+      // P1-3: Experience learning from user edits
+      if (oldPreview && oldPreview !== content) {
+        try {
+          const provider = llmProviderFactory.hasDefault() ? llmProviderFactory.getDefault() : null;
+          if (provider) {
+            const entry = await analyzeEditIntent(
+              channelCode,
+              oldPreview,
+              content,
+              (messages) => provider.chatCompletion(messages, 'quick')
+            );
+            if (entry) {
+              await addEntry(channelCode, entry);
+            }
+          }
+        } catch (err) {
+          logger.warn(`经验分析失败: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+
       res.json({ code: 0, message: '预览已更新' });
     } catch (err) {
       res.status(500).json({ code: -1, message: '更新预览失败' });

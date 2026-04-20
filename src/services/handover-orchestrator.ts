@@ -45,17 +45,10 @@ export async function handleHandoverStart(
     await addReaction(channel, chatId, '✅');
     await channel.sendCard(chatId, buildHandoverCard(sender.name, handoverBody, true));
   } else {
-    // Mode B: auto-archive
-    const filename = `${formatDate()}_${sender.id}_archived.md`;
-    const now = new Date().toISOString();
-    const record = await buildHandoverRecord(channelCode, sender, null, handoverBody, {
-      requireAccept: false,
-      createdAt: now,
-    });
-    await saveHandoverRecord(channelCode, filename, record);
-    await clearDraftData(channelCode);
+    // Mode B: save as pending, sender can self-confirm via H5
+    await savePending(channelCode, sender, handoverBody);
     await addReaction(channel, chatId, '✅');
-    await channel.sendCard(chatId, buildHandoverCard(sender.name, handoverBody, false));
+    await channel.sendCard(chatId, buildHandoverCard(sender.name, handoverBody, true));
   }
 }
 
@@ -68,15 +61,19 @@ export async function handleHandoverAccept(
 ): Promise<void> {
   const channelConfig = await getChannelConfig(channelCode);
 
-  if (!channelConfig?.settings.requireAccept) {
-    await channel.sendMessage(chatId, { type: 'text', text: '当前群不需要接班确认，交班时已自动归档。' });
-    return;
-  }
-
   const rawPending = await findPending(channelCode);
   if (!rawPending) {
     await channel.sendMessage(chatId, { type: 'text', text: '当前没有待交接的记录。' });
     return;
+  }
+
+  if (!channelConfig?.settings.requireAccept) {
+    // Mode B: only the original sender can self-confirm
+    const senderInfo = rawPending?.sender as { id: string; name: string } | undefined;
+    if (senderInfo && receiver.id !== senderInfo.id) {
+      await channel.sendMessage(chatId, { type: 'text', text: '当前群允许交班人自行确认，无需他人确认。' });
+      return;
+    }
   }
 
   const pending = rawPending;

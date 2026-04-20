@@ -38,7 +38,7 @@ export function registerWebhookRoutes(app: Express): void {
 
       const channel = channelFactory.get(channelCode);
       const message = await channel.receiveMessage(body);
-      const getProvider = () => llmProviderFactory.hasDefault() ? llmProviderFactory.getDefault() : null;
+      const getProvider = () => llmProviderFactory.getForTask('analyze');
       if (!message) {
         return res.json({ code: 0 });
       }

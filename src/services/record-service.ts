@@ -7,6 +7,8 @@ import { incrementalUpdatePreview } from './draft-preview-service';
 import { validateAnalysis } from './analysis-validator';
 import { getSoul, buildSoulPrompt } from './soul-service';
 import { getAgents, buildAgentsPrompt } from './agents-service';
+import { getChannelMemory, extractMemoryForPrompt } from './channel-memory-service';
+import { getExperience, buildExperiencePrompt } from './experience-service';
 import { addReaction } from './reaction-service';
 import { logger } from '../utils/logger';
 import { getDataDir } from '../utils/data-dir';
@@ -25,9 +27,22 @@ function toAnalysisItem(msgId: string, result: AnalyzeResult): AnalysisItem {
 }
 
 async function buildContextPrompt(channelCode: string): Promise<string> {
-  const soul = await getSoul(channelCode);
-  const agents = await getAgents(channelCode);
-  return buildSoulPrompt(soul, buildAgentsPrompt(agents));
+  const [soul, agents, memory, experience] = await Promise.all([
+    getSoul(channelCode),
+    getAgents(channelCode),
+    getChannelMemory(channelCode),
+    getExperience(channelCode),
+  ]);
+
+  const parts: string[] = [buildSoulPrompt(soul, buildAgentsPrompt(agents))];
+
+  const memoryPrompt = extractMemoryForPrompt(memory);
+  if (memoryPrompt) parts.push(memoryPrompt);
+
+  const experiencePrompt = buildExperiencePrompt(experience);
+  if (experiencePrompt) parts.push(experiencePrompt);
+
+  return parts.join('\n\n');
 }
 
 function buildPromptWithQuote(basePrompt: string, quotedContext?: string): string {

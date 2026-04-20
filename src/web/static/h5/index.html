@@ -73,10 +73,36 @@
     const API_BASE = '/api/h5';
     let channelCode = '';
     let editing = false;
+    let currentUser = null; // { open_id, name }
 
     function getChannelCode() {
       const params = new URLSearchParams(window.location.search);
       return params.get('code') || '';
+    }
+
+    async function authenticate() {
+      const params = new URLSearchParams(window.location.search);
+      const authCode = params.get('auth_code');
+      if (authCode) {
+        try {
+          const res = await fetch(`${API_BASE}/auth/feishu?code=${encodeURIComponent(authCode)}`);
+          const data = await res.json();
+          if (data.code === 0 && data.data) {
+            currentUser = data.data;
+            sessionStorage.setItem('h5_user', JSON.stringify(currentUser));
+            return;
+          }
+        } catch (err) {
+          console.error('认证失败:', err);
+        }
+      }
+
+      const cached = sessionStorage.getItem('h5_user');
+      if (cached) {
+        try {
+          currentUser = JSON.parse(cached);
+        } catch {}
+      }
     }
 
     function showError(msg) {
@@ -180,10 +206,16 @@
 
     async function startHandover() {
       if (!confirm('确认发起交班？')) return;
+      const body = {};
+      if (currentUser) {
+        body.senderId = currentUser.open_id;
+        body.senderName = currentUser.name;
+      }
       try {
         const res = await fetch(`${API_BASE}/handover/${channelCode}/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (data.code === 0) {
@@ -199,11 +231,16 @@
 
     async function acceptHandover() {
       if (!confirm('确认接班？')) return;
+      const body = {};
+      if (currentUser) {
+        body.receiverId = currentUser.open_id;
+        body.receiverName = currentUser.name;
+      }
       try {
         const res = await fetch(`${API_BASE}/handover/${channelCode}/accept`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ receiverId: 'h5_user', receiverName: '接班人' }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (data.code === 0) {
@@ -241,7 +278,7 @@
     if (!channelCode) {
       document.getElementById('status').textContent = '缺少渠道参数';
     } else {
-      checkPending();
+      authenticate().then(() => checkPending());
     }
   </script>
 </body>

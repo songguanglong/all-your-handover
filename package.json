@@ -1,6 +1,6 @@
 {
   "name": "all-your-handover",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "轻量级本地部署的酒店交接班工具 — 数据自有，交接由你做主",
   "main": "dist/index.js",
   "scripts": {

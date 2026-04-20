@@ -18,8 +18,30 @@ function previewPath(channelCode: string): string {
   return path.join(getDataDir(), `channels/${channelCode}/drafts/preview.md`);
 }
 
+function previewItemsPath(channelCode: string): string {
+  return path.join(getDataDir(), `channels/${channelCode}/drafts/preview-items.json`);
+}
+
 function draftDir(channelCode: string): string {
   return path.join(getDataDir(), `channels/${channelCode}/drafts`);
+}
+
+interface PreviewItemsFile {
+  items: AnalysisItem[];
+}
+
+async function readPreviewItems(channelCode: string): Promise<PreviewItemsFile> {
+  try {
+    const data = await fs.readFile(previewItemsPath(channelCode), 'utf-8');
+    return JSON.parse(data) as PreviewItemsFile;
+  } catch {
+    return { items: [] };
+  }
+}
+
+async function writePreviewItems(channelCode: string, file: PreviewItemsFile): Promise<void> {
+  await fs.mkdir(draftDir(channelCode), { recursive: true });
+  await fs.writeFile(previewItemsPath(channelCode), JSON.stringify(file, null, 2), 'utf-8');
 }
 
 /** Read the preview.md content */
@@ -32,7 +54,7 @@ export async function readPreview(channelCode: string): Promise<string | null> {
   }
 }
 
-/** Full replacement of preview.md content */
+/** Full replacement of preview.md content, reconciles preview-items.json */
 export async function updatePreview(channelCode: string, content: string): Promise<void> {
   const dp = draftDir(channelCode);
   await fs.mkdir(dp, { recursive: true });
@@ -41,6 +63,17 @@ export async function updatePreview(channelCode: string, content: string): Promi
   await acquireLock(p);
   try {
     await fs.writeFile(p, content, 'utf-8');
+
+    // Reconcile preview-items.json with markers still present in new content
+    const itemsFile = await readPreviewItems(channelCode);
+    const markerRegex = /<!-- msg:([a-zA-Z0-9_-]+) -->/g;
+    const remainingMsgIds = new Set<string>();
+    let match;
+    while ((match = markerRegex.exec(content)) !== null) {
+      remainingMsgIds.add(match[1]);
+    }
+    itemsFile.items = itemsFile.items.filter(i => remainingMsgIds.has(i.msgId));
+    await writePreviewItems(channelCode, itemsFile);
   } finally {
     releaseLock(p);
   }
@@ -50,6 +83,7 @@ export async function updatePreview(channelCode: string, content: string): Promi
 /**
  * Incremental update: insert or update a single analysis item in preview.md.
  * Finds the section matching the item's category, adds/updates the entry there.
+ * Also updates preview-items.json for robust tracking.
  */
 export async function incrementalUpdatePreview(channelCode: string, item: AnalysisItem): Promise<void> {
   const dp = draftDir(channelCode);
@@ -67,18 +101,29 @@ export async function incrementalUpdatePreview(channelCode: string, item: Analys
 
     const updated = applyIncrementalUpdate(preview, item);
     await fs.writeFile(p, updated, 'utf-8');
+
+    // Update preview-items.json
+    const itemsFile = await readPreviewItems(channelCode);
+    const idx = itemsFile.items.findIndex(i => i.msgId === item.msgId);
+    if (idx >= 0) {
+      itemsFile.items[idx] = item;
+    } else {
+      itemsFile.items.push(item);
+    }
+    await writePreviewItems(channelCode, itemsFile);
   } finally {
     releaseLock(p);
   }
   await autoCommit();
 }
 
-/** Clear preview.md (used after handover archival) */
+/** Clear preview.md and preview-items.json (used after handover archival) */
 export async function clearPreview(channelCode: string): Promise<void> {
   const p = previewPath(channelCode);
   await acquireLock(p);
   try {
     await fs.writeFile(p, '', 'utf-8');
+    await writePreviewItems(channelCode, { items: [] });
   } finally {
     releaseLock(p);
   }
