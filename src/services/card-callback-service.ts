@@ -8,6 +8,8 @@ import { channelFactory } from '../channels/channel-factory';
 import { llmProviderFactory } from '../llm/llm-provider-factory';
 import { getLatestHandover } from './context-service';
 import { getSystemPrompt, getTemplate } from './config-service';
+import { getSoul, buildSoulPrompt } from './agent-soul-service';
+import { getExperience, buildExperiencePrompt } from './experience-service';
 import { getApp } from '../app';
 import { logger } from '../utils/logger';
 import { getDataDir } from '../utils/data-dir';
@@ -61,9 +63,13 @@ export async function handleCardAction(action: CardAction): Promise<Record<strin
       const template = await getTemplate(channelCode);
       const previousHandover = await getLatestHandover(channelCode);
       const systemPrompt = await getSystemPrompt(channelCode);
+      const soul = await getSoul(channelCode);
+      const soulPrompt = buildSoulPrompt(soul);
+      const experience = await getExperience(channelCode);
+      const experiencePrompt = buildExperiencePrompt(experience);
       app.llmQueue.enqueue(channelCode, {
         execute: () => provider.generateHandover({
-          draft, template, previousHandover: previousHandover ?? undefined, systemPrompt,
+          draft, template, previousHandover: previousHandover ?? undefined, systemPrompt, soulPrompt, experiencePrompt,
         }),
         onSuccess: (result: unknown) => {
           const content = typeof result === 'string' ? result : String(result);
@@ -80,9 +86,11 @@ export async function handleCardAction(action: CardAction): Promise<Record<strin
 
     case 'handover': {
       const operator = await channel.getUserInfo(action.operator.open_id);
-      await handleHandoverStart(operator, channel, action.chatId, channelCode, async (draft, template, previousHandover, systemPrompt) => {
+      await handleHandoverStart(operator, channel, action.chatId, channelCode, async (draft, template, previousHandover, systemPrompt, soulPrompt, experiencePrompt) => {
         if (llmProviderFactory.hasDefault()) {
-          return llmProviderFactory.getDefault().generateHandover({ draft, template, previousHandover: previousHandover ?? undefined, systemPrompt });
+          return llmProviderFactory.getDefault().generateHandover({
+            draft, template, previousHandover: previousHandover ?? undefined, systemPrompt, soulPrompt, experiencePrompt,
+          });
         }
         return draft;
       });

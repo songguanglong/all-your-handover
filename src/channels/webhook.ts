@@ -6,6 +6,7 @@ import { handleTextMessage, handleImageMessage, handleAudioMessage } from '../se
 import { handleHandoverStart, handleHandoverAccept, handleHandoverCancel, handleDraftView } from '../services/handover-orchestrator';
 import { handleCardAction } from '../services/card-callback-service';
 import { llmProviderFactory } from '../llm/llm-provider-factory';
+import { addReaction } from '../services/reaction-service';
 import { getApp } from '../app';
 import type { CardAction, LLMTask } from '../types';
 import { logger } from '../utils/logger';
@@ -45,18 +46,30 @@ export function registerWebhookRoutes(app: Express): void {
       // Check for commands first (always detected regardless of messageFilter)
       const command = channel.parseCommand(message);
       if (command) {
+        await addReaction(channel, message.id, '👀');
+
         switch (command.type) {
           case 'HANDOVER_START':
-            await handleHandoverStart(command.sender, channel, chatId, channelCode, async (draft, template, previousHandover, systemPrompt) => {
+            await handleHandoverStart(command.sender, channel, chatId, channelCode, async (draft, template, previousHandover, systemPrompt, soulPrompt, experiencePrompt) => {
               if (llmProviderFactory.hasDefault()) {
-                return llmProviderFactory.getDefault().generateHandover({ draft, template, previousHandover: previousHandover ?? undefined, systemPrompt });
+                return llmProviderFactory.getDefault().generateHandover({
+                  draft, template, previousHandover: previousHandover ?? undefined, systemPrompt, soulPrompt, experiencePrompt,
+                });
               }
               return draft;
             });
             break;
-          case 'HANDOVER_ACCEPT':
-            await handleHandoverAccept(command.sender, channel, chatId, channelCode);
+          case 'HANDOVER_ACCEPT': {
+            const getChatCompletion = () => {
+              if (llmProviderFactory.hasDefault()) {
+                const provider = llmProviderFactory.getDefault();
+                return (messages: Array<{ role: string; content: string }>) => provider.chatCompletion(messages, 'standard');
+              }
+              return null;
+            };
+            await handleHandoverAccept(command.sender, channel, chatId, channelCode, getChatCompletion);
             break;
+          }
           case 'HANDOVER_CANCEL':
             await handleHandoverCancel(command.sender, channel, chatId, channelCode);
             break;
@@ -135,6 +148,7 @@ export function registerWebhookRoutes(app: Express): void {
         operator: { open_id: action.operator?.open_id || '' },
         formValue: action.form_value,
         chatId: action.value?.chatId || '',
+        messageId: action.value?.messageId || '',
       };
 
       const result = await handleCardAction(cardAction);

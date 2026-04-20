@@ -8,6 +8,7 @@ import type {
   TranscribeParams,
   GenerateHandoverParams,
   AnalyzeResult,
+  ThinkingMode,
 } from '../types';
 import { logger } from '../utils/logger';
 
@@ -48,16 +49,19 @@ export abstract class BaseLLMProvider implements LLMProvider {
     this.name = config.name;
   }
 
-  async analyzeText(params: AnalyzeTextParams): Promise<AnalyzeResult> {
+  async analyzeText(params: AnalyzeTextParams & { soulPrompt?: string }): Promise<AnalyzeResult> {
+    const systemContent = params.soulPrompt
+      ? `${params.soulPrompt}\n\n${params.prompt}`
+      : params.prompt;
     const messages = [
-      { role: 'system', content: params.prompt },
+      { role: 'system', content: systemContent },
       { role: 'user', content: params.text },
     ];
-    const result = await this.chatCompletion(messages);
+    const result = await this.chatCompletion(messages, 'quick');
     return this.parseAnalyzeResult(result);
   }
 
-  async analyzeImage(params: AnalyzeImageParams): Promise<AnalyzeResult> {
+  async analyzeImage(params: AnalyzeImageParams & { soulPrompt?: string }): Promise<AnalyzeResult> {
     if (!this.supportsImage) {
       return { category: '图片', content: '当前 Provider 不支持图片分析', urgency: 'low' };
     }
@@ -67,8 +71,12 @@ export abstract class BaseLLMProvider implements LLMProvider {
     const ext = params.imagePath.split('.').pop()?.toLowerCase() ?? 'jpeg';
     const mimeType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
 
+    const systemContent = params.soulPrompt
+      ? `${params.soulPrompt}\n\n${params.prompt}`
+      : params.prompt;
+
     const messages = [
-      { role: 'system', content: params.prompt },
+      { role: 'system', content: systemContent },
       {
         role: 'user',
         content: [
@@ -76,23 +84,26 @@ export abstract class BaseLLMProvider implements LLMProvider {
         ],
       },
     ];
-    const result = await this.chatCompletion(messages);
+    const result = await this.chatCompletion(messages, 'quick');
     return this.parseAnalyzeResult(result);
   }
 
-  async transcribeAudio(params: TranscribeParams): Promise<string> {
+  async transcribeAudio(params: TranscribeParams & { soulPrompt?: string }): Promise<string> {
     if (!this.supportsAudio) {
       return '[当前 Provider 不支持语音处理]';
     }
-    // Try multimodal chat completion with audio input
     const fs = await import('fs/promises');
     const audioBuffer = await fs.readFile(params.audioPath);
     const base64 = audioBuffer.toString('base64');
     const ext = params.audioPath.split('.').pop()?.toLowerCase() ?? 'opus';
     const format = ext === 'mp3' ? 'mp3' : ext === 'wav' ? 'wav' : ext === 'm4a' ? 'm4a' : 'opus';
 
+    const systemContent = params.soulPrompt
+      ? `${params.soulPrompt}\n\n${params.prompt}`
+      : params.prompt;
+
     const messages = [
-      { role: 'system', content: params.prompt },
+      { role: 'system', content: systemContent },
       {
         role: 'user',
         content: [
@@ -100,32 +111,45 @@ export abstract class BaseLLMProvider implements LLMProvider {
         ],
       },
     ];
-    return this.chatCompletion(messages);
+    return this.chatCompletion(messages, 'quick');
   }
 
   async generateHandover(params: GenerateHandoverParams): Promise<string> {
     const systemPrompt = params.systemPrompt
       || '你是一个交接班助手。请根据以下模版和草稿内容，生成交接班记录。保持模版结构，用实际内容替换占位符。';
 
-    let contextBlock = '';
+    const parts: string[] = [systemPrompt];
+
+    if (params.soulPrompt) {
+      parts.push(params.soulPrompt);
+    }
+
+    parts.push(`模版:\n${params.template}`);
+
     if (params.previousHandover) {
       const dateLabel = params.previousHandover.date || '未知';
-      contextBlock = `\n\n--- 上一班交接记录 ---\n日期: ${dateLabel}\n${params.previousHandover.body}\n---`;
+      parts.push(`--- 上一班交接记录 ---\n日期: ${dateLabel}\n${params.previousHandover.body}\n---`);
+    }
+
+    if (params.experiencePrompt) {
+      parts.push(params.experiencePrompt);
     }
 
     const messages = [
-      { role: 'system', content: `${systemPrompt}\n\n模版:\n${params.template}${contextBlock}` },
+      { role: 'system', content: parts.join('\n\n') },
       { role: 'user', content: `草稿内容:\n${params.draft}` },
     ];
-    return this.chatCompletion(messages);
+    return this.chatCompletion(messages, 'deep');
   }
 
-  async chatCompletion(messages: Array<{ role: string; content: string | unknown[] }>): Promise<string> {
+  async chatCompletion(messages: Array<{ role: string; content: string | unknown[] }>, thinkingMode?: ThinkingMode): Promise<string> {
+    const config = this.getThinkingConfig(thinkingMode);
     const url = `${this.config.baseUrl}/chat/completions`;
     const body = JSON.stringify({
       model: this.config.model,
       messages,
-      temperature: 0.7,
+      temperature: config.temperature,
+      ...(config.maxTokens && { max_tokens: config.maxTokens }),
     });
 
     const response = await request(url, {
@@ -142,6 +166,15 @@ export abstract class BaseLLMProvider implements LLMProvider {
       throw new Error('Empty response from LLM');
     }
     return content;
+  }
+
+  private getThinkingConfig(mode?: ThinkingMode): { temperature: number; maxTokens?: number } {
+    const configs: Record<ThinkingMode, { temperature: number; maxTokens?: number }> = {
+      quick:    { temperature: 0.3, maxTokens: 512 },
+      standard: { temperature: 0.7 },
+      deep:     { temperature: 0.8, maxTokens: 4096 },
+    };
+    return configs[mode || 'standard'];
   }
 
   protected parseAnalyzeResult(text: string): AnalyzeResult {

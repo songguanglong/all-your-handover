@@ -7,6 +7,11 @@ import { logger } from './utils/logger';
 import { getDataDir } from './utils/data-dir';
 import { setAutoCommit as setDraftAutoCommit } from './services/draft-service';
 import { setAutoCommit as setHandoverAutoCommit } from './services/handover-service';
+import { setAutoCommit as setSoulAutoCommit } from './services/agent-soul-service';
+import { setAutoCommit as setExperienceAutoCommit } from './services/experience-service';
+import { setAutoCommit as setDreamAutoCommit } from './services/dream-service';
+import { shouldRunDream, runDream } from './services/dream-service';
+import { loadChannelsConfig } from './services/config-service';
 
 // Global app instance
 let appInstance: App | null = null;
@@ -15,6 +20,7 @@ export class App {
   git: GitManager;
   llmQueue: LLMQueue;
   private _initialized = false;
+  private dreamTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
     const dataDir = getDataDir();
@@ -35,6 +41,9 @@ export class App {
     const gitAutoCommit = this.git.autoCommit.bind(this.git);
     setDraftAutoCommit(gitAutoCommit);
     setHandoverAutoCommit(gitAutoCommit);
+    setSoulAutoCommit(gitAutoCommit);
+    setExperienceAutoCommit(gitAutoCommit);
+    setDreamAutoCommit(gitAutoCommit);
 
     // Initialize providers
     try {
@@ -50,9 +59,57 @@ export class App {
       logger.error(`渠道初始化失败: ${err}`);
     }
 
+    // Start dream scheduler
+    this.startDreamScheduler();
+
     this._initialized = true;
     appInstance = this;
     logger.info('App 初始化完成');
+  }
+
+  private startDreamScheduler(): void {
+    // Check every minute
+    this.dreamTimer = setInterval(async () => {
+      try {
+        await this.checkDreamSchedule();
+      } catch (err) {
+        logger.error(`Dream scheduler error: ${err instanceof Error ? err.message : err}`);
+      }
+    }, 60_000);
+  }
+
+  private async checkDreamSchedule(): Promise<void> {
+    if (!llmProviderFactory.hasDefault()) return;
+
+    const config = await loadChannelsConfig();
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    for (const channel of config.channels) {
+      if (!channel.isEnabled) continue;
+
+      const should = await shouldRunDream(channel.code);
+      if (!should) continue;
+
+      const dreamConfig = await import('./services/dream-service').then(m => m.getDreamConfig(channel.code));
+      if (dreamConfig.cronHour !== currentHour) continue;
+
+      const provider = llmProviderFactory.getDefault();
+      const chatCompletion = (messages: Array<{ role: string; content: string }>) => provider.chatCompletion(messages, 'deep');
+
+      logger.info(`Dream scheduler: running dream for channel ${channel.code}`);
+      const report = await runDream(channel.code, chatCompletion);
+      if (report) {
+        logger.info(`Dream ${channel.code}: ${report.originalCount} -> ${report.optimizedCount} rules`);
+      }
+    }
+  }
+
+  stopDreamScheduler(): void {
+    if (this.dreamTimer) {
+      clearInterval(this.dreamTimer);
+      this.dreamTimer = undefined;
+    }
   }
 
   getChannelFactory() { return channelFactory; }

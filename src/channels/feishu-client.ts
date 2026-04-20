@@ -220,6 +220,20 @@ export class FeishuClient {
     }));
   }
 
+  async addReaction(messageId: string, emoji: string): Promise<void> {
+    const token = await this.getTenantToken();
+    const url = `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/reactions`;
+    const body = JSON.stringify({ reaction_type: { emoji_type: emoji } });
+
+    await request(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }, body);
+  }
+
   async getMessage(messageId: string): Promise<{ body: Record<string, unknown> | null }> {
     const token = await this.getTenantToken();
     const url = `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}`;

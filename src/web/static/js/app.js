@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
         case 'platforms': await renderPlatforms(); break;
         case 'channels': await renderChannels(); break;
         case 'template': await renderTemplate(); break;
+        case 'agent': await renderAgent(); break;
         case 'handovers': await renderHandovers(); break;
         case 'monitoring': await renderMonitoring(); break;
         default: main.innerHTML = '<div class="card"><h2>404</h2><p>页面不存在</p></div>';
@@ -593,4 +594,220 @@ document.addEventListener('DOMContentLoaded', () => {
         </table>
       </div>`;
   }
-});
+
+  // --- Agent ---
+  async function renderAgent() {
+    const channels = await api.get('/channels');
+    const chList = channels.data || [];
+    if (chList.length === 0) {
+      main.innerHTML = '<div class="card"><h2>Agent 设置</h2><p>请先添加渠道。</p></div>';
+      return;
+    }
+
+    const code = chList[0].code;
+
+    main.innerHTML = `
+      <div class="card">
+        <h2>Agent 人设 (Soul)</h2>
+        <div class="form-group"><label>渠道</label><select id="agent-channel">${chList.map(ch => `<option value="${ch.code}">${ch.name} (${ch.code})</option>`).join('')}</select></div>
+        <div class="form-group"><label>场景模板</label><select id="agent-template"><option value="">-- 选择内置模板 --</option></select></div>
+        <div class="form-group"><label>人设描述</label><textarea id="agent-persona" rows="2" placeholder="如：你是一位专业的酒店前台交接班助手"></textarea></div>
+        <div class="form-group"><label>语气风格</label><input id="agent-tone" placeholder="如：专业、细致"></div>
+        <div class="form-group"><label>行为约束（每行一条）</label><textarea id="agent-constraints" rows="3" placeholder="关注客房状态&#10;关注宾客特殊需求"></textarea></div>
+        <div class="form-group"><label>自定义场景描述</label><textarea id="agent-custom" rows="2" placeholder="仅在场景为自定义时使用"></textarea></div>
+        <div id="agent-soul-error"></div>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="save-soul">保存</button>
+          <button class="btn btn-default" id="reset-soul">重置为默认</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>经验规则</h2>
+        <p style="color:#666;font-size:13px;margin-bottom:8px;">Agent 从用户编辑行为中积累的经验，以及深度反思优化后的规则。</p>
+        <div id="experience-list"></div>
+        <div id="experience-error"></div>
+      </div>
+      <div class="card">
+        <h2>深度反思 (Dream)</h2>
+        <p style="color:#666;font-size:13px;margin-bottom:8px;">定期审视经验规则，提炼优化。也可手动触发。</p>
+        <div class="form-group"><label>启用定时反思</label><select id="dream-enabled"><option value="true">是</option><option value="false">否</option></select></div>
+        <div class="form-group"><label>反思时间（每天）</label><select id="dream-hour">${Array.from({length:24}, (_,i) => `<option value="${i}"${i===3?' selected':''}>${String(i).padStart(2,'0')}:00</option>`).join('')}</select></div>
+        <div id="dream-info"></div>
+        <div id="dream-error"></div>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="save-dream">保存</button>
+          <button class="btn btn-default" id="trigger-dream">立即反思</button>
+        </div>
+      </div>`;
+
+    // Load templates
+    const templatesData = await api.get(`/channels/${code}/agent/soul/templates`);
+    const templates = templatesData.data?.templates || [];
+    const tmplSelect = document.getElementById('agent-template');
+    templates.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = `${t.name} - ${t.description}`;
+      tmplSelect.appendChild(opt);
+    });
+
+    // Load current soul
+    async function loadSoul(chCode) {
+      const res = await api.get(`/channels/${chCode}/agent/soul`);
+      const soul = res.data?.soul || {};
+      document.getElementById('agent-persona').value = soul.persona || '';
+      document.getElementById('agent-tone').value = soul.tone || '';
+      document.getElementById('agent-constraints').value = (soul.constraints || []).join('\n');
+      document.getElementById('agent-custom').value = soul.customScenario || '';
+      document.getElementById('agent-template').value = soul.scenario || '';
+    }
+
+    // Load experience
+    async function loadExperience(chCode) {
+      const res = await api.get(`/channels/${chCode}/agent/experience`);
+      const entries = res.data?.entries || [];
+      const lastDreamAt = res.data?.lastDreamAt;
+      const container = document.getElementById('experience-list');
+
+      if (entries.length === 0) {
+        container.innerHTML = '<p style="color:#999">暂无经验规则</p>';
+      } else {
+        container.innerHTML = `<table>
+          <tr><th>规则</th><th>来源</th><th>时间</th><th>操作</th></tr>
+          ${entries.map(e => `<tr>
+            <td>${esc(e.rule)}</td>
+            <td><span class="badge ${e.source === 'dream' ? 'badge-info' : 'badge-success'}">${e.source === 'dream' ? '反思' : '编辑'}</span></td>
+            <td>${new Date(e.createdAt).toLocaleString()}</td>
+            <td><button class="btn btn-danger btn-sm del-exp" data-id="${esc(e.id)}">删除</button></td>
+          </tr>`).join('')}
+        </table>`;
+      }
+
+      const dreamInfo = document.getElementById('dream-info');
+      dreamInfo.innerHTML = lastDreamAt
+        ? `<span class="badge badge-info">上次反思: ${new Date(lastDreamAt).toLocaleString()}</span>`
+        : '<span class="badge badge-warning">尚未执行过反思</span>';
+    }
+
+    // Load dream config
+    async function loadDreamConfig(chCode) {
+      const res = await api.get(`/channels/${chCode}/agent/dream-config`);
+      const config = res.data?.config || {};
+      document.getElementById('dream-enabled').value = String(config.enabled ?? true);
+      document.getElementById('dream-hour').value = String(config.cronHour ?? 3);
+    }
+
+    // Initial load
+    await loadSoul(code);
+    await loadExperience(code);
+    await loadDreamConfig(code);
+
+    // Channel switch
+    document.getElementById('agent-channel').addEventListener('change', async (e) => {
+      await loadSoul(e.target.value);
+      await loadExperience(e.target.value);
+      await loadDreamConfig(e.target.value);
+    });
+
+    // Template auto-fill
+    document.getElementById('agent-template').addEventListener('change', (e) => {
+      const tmpl = templates.find(t => t.id === e.target.value);
+      if (tmpl) {
+        document.getElementById('agent-persona').value = tmpl.soul.persona;
+        document.getElementById('agent-tone').value = tmpl.soul.tone || '';
+        document.getElementById('agent-constraints').value = (tmpl.soul.constraints || []).join('\n');
+        document.getElementById('agent-custom').value = tmpl.soul.customScenario || '';
+      }
+    });
+
+    // Save soul
+    document.getElementById('save-soul').addEventListener('click', async () => {
+      const ch = document.getElementById('agent-channel').value;
+      const btn = document.getElementById('save-soul');
+      try {
+        btn.disabled = true;
+        await api.put(`/channels/${ch}/agent/soul`, {
+          persona: document.getElementById('agent-persona').value,
+          tone: document.getElementById('agent-tone').value,
+          constraints: document.getElementById('agent-constraints').value.split('\n').map(s => s.trim()).filter(Boolean),
+          customScenario: document.getElementById('agent-custom').value,
+          scenario: document.getElementById('agent-template').value || 'custom',
+        });
+        document.getElementById('agent-soul-error').innerHTML = '<div class="success">人设已保存</div>';
+      } catch (err) {
+        document.getElementById('agent-soul-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Reset soul
+    document.getElementById('reset-soul').addEventListener('click', async () => {
+      const ch = document.getElementById('agent-channel').value;
+      try {
+        const res = await api.put(`/channels/${ch}/agent/soul/reset`, {});
+        const soul = res.data?.soul || {};
+        document.getElementById('agent-persona').value = soul.persona || '';
+        document.getElementById('agent-tone').value = soul.tone || '';
+        document.getElementById('agent-constraints').value = (soul.constraints || []).join('\n');
+        document.getElementById('agent-custom').value = soul.customScenario || '';
+        document.getElementById('agent-template').value = '';
+      } catch (err) {
+        document.getElementById('agent-soul-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      }
+    });
+
+    // Delete experience entry
+    document.getElementById('experience-list').addEventListener('click', async (e) => {
+      const btn = e.target.closest('.del-exp');
+      if (!btn) return;
+      const ch = document.getElementById('agent-channel').value;
+      try {
+        await api.delete(`/channels/${ch}/agent/experience/${btn.dataset.id}`);
+        await loadExperience(ch);
+      } catch (err) {
+        document.getElementById('experience-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      }
+    });
+
+    // Save dream config
+    document.getElementById('save-dream').addEventListener('click', async () => {
+      const ch = document.getElementById('agent-channel').value;
+      const btn = document.getElementById('save-dream');
+      try {
+        btn.disabled = true;
+        await api.put(`/channels/${ch}/agent/dream-config`, {
+          enabled: document.getElementById('dream-enabled').value === 'true',
+          cronHour: parseInt(document.getElementById('dream-hour').value, 10),
+        });
+        document.getElementById('dream-error').innerHTML = '<div class="success">反思配置已保存</div>';
+      } catch (err) {
+        document.getElementById('dream-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Manual dream trigger
+    document.getElementById('trigger-dream').addEventListener('click', async () => {
+      const ch = document.getElementById('agent-channel').value;
+      const btn = document.getElementById('trigger-dream');
+      try {
+        btn.disabled = true;
+        btn.textContent = '反思中...';
+        const res = await api.post(`/channels/${ch}/agent/dream/trigger`, {});
+        const report = res.data?.report;
+        if (report) {
+          document.getElementById('dream-error').innerHTML = `<div class="success">反思完成: ${report.originalCount} 条规则优化为 ${report.optimizedCount} 条</div>`;
+        } else {
+          document.getElementById('dream-error').innerHTML = '<div class="success">没有经验规则可供反思</div>';
+        }
+        await loadExperience(ch);
+      } catch (err) {
+        document.getElementById('dream-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '立即反思';
+      }
+    });
+  }

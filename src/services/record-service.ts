@@ -3,6 +3,8 @@ import path from 'path';
 import type { Message, ChannelAdapter, AnalyzeResult, LLMTask, LLMProvider } from '../types';
 import { appendToDraft, updateDraftAnalysis } from './draft-service';
 import { getChannelConfig } from './config-service';
+import { getSoul, buildSoulPrompt } from './agent-soul-service';
+import { addReaction } from './reaction-service';
 import { logger } from '../utils/logger';
 import { getDataDir } from '../utils/data-dir';
 
@@ -37,6 +39,8 @@ export async function handleTextMessage(
 ): Promise<void> {
   const text = (message.content as { text: string }).text;
 
+  await addReaction(channel, message.id, '🤔');
+
   await appendToDraft(channelCode, {
     messageId: message.id,
     type: 'text',
@@ -48,12 +52,17 @@ export async function handleTextMessage(
   });
 
   const prompt = buildPromptWithQuote(TEXT_ANALYSIS_PROMPT, quotedContext);
+  const soul = await getSoul(channelCode);
+  const soulPrompt = buildSoulPrompt(soul);
   const provider = getProvider();
   enqueueLLM(channelCode, {
     execute: provider
-      ? () => provider.analyzeText({ text, prompt })
+      ? () => provider.analyzeText({ text, prompt, soulPrompt })
       : noProviderFallback(text),
-    onSuccess: (analysis: unknown) => updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis)),
+    onSuccess: (analysis: unknown) => {
+      updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis));
+      addReaction(channel, message.id, '✅');
+    },
     onFailure: (err: Error) => logger.error(`LLM 分析失败: ${err.message}`),
   });
 }
@@ -76,6 +85,8 @@ export async function handleImageMessage(
     logger.warn(`图片数据为空，跳过保存: ${imagePath}`);
   }
 
+  await addReaction(channel, message.id, '🤔');
+
   await appendToDraft(channelCode, {
     messageId: message.id,
     type: 'image',
@@ -87,12 +98,17 @@ export async function handleImageMessage(
   });
 
   const prompt = buildPromptWithQuote(IMAGE_ANALYSIS_PROMPT, quotedContext);
+  const soul = await getSoul(channelCode);
+  const soulPrompt = buildSoulPrompt(soul);
   const provider = getProvider();
   enqueueLLM(channelCode, {
     execute: provider
-      ? () => provider.analyzeImage({ imagePath, prompt })
+      ? () => provider.analyzeImage({ imagePath, prompt, soulPrompt })
       : noProviderFallback(`[图片: ${imagePath}]`),
-    onSuccess: (analysis: unknown) => updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis)),
+    onSuccess: (analysis: unknown) => {
+      updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis));
+      addReaction(channel, message.id, '✅');
+    },
     onFailure: (err: Error) => logger.error(`LLM 图片分析失败: ${err.message}`),
   });
 }
@@ -115,6 +131,8 @@ export async function handleAudioMessage(
     logger.warn(`语音数据为空，跳过保存: ${audioPath}`);
   }
 
+  await addReaction(channel, message.id, '🤔');
+
   await appendToDraft(channelCode, {
     messageId: message.id,
     type: 'audio',
@@ -125,32 +143,37 @@ export async function handleAudioMessage(
     timestamp: new Date(),
   });
 
+  const soul = await getSoul(channelCode);
+  const soulPrompt = buildSoulPrompt(soul);
   const provider = getProvider();
   if (!provider) {
     enqueueLLM(channelCode, {
       execute: noProviderFallback('[语音消息]'),
-      onSuccess: (analysis: unknown) => updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis)),
+      onSuccess: (analysis: unknown) => {
+        updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis));
+        addReaction(channel, message.id, '✅');
+      },
       onFailure: (err: Error) => logger.error(`LLM 分析失败: ${err.message}`),
     });
     return;
   }
 
   const prompt = buildPromptWithQuote(AUDIO_ANALYSIS_PROMPT, quotedContext);
-  // Strategy: try LLM multimodal audio analysis first, fallback to Whisper + text analysis
   enqueueLLM(channelCode, {
     execute: async () => {
       try {
-        // Try multimodal: send audio directly to LLM for analysis
-        return await provider.transcribeAudio({ audioPath, prompt });
+        return await provider.transcribeAudio({ audioPath, prompt, soulPrompt });
       } catch (err) {
         logger.warn(`LLM 多模态语音分析失败，回退到 Whisper+文本分析: ${err instanceof Error ? err.message : err}`);
-        // Fallback: Whisper transcription, then text analysis
-        const transcription = await provider.transcribeAudio({ audioPath, prompt: AUDIO_TRANSCRIPTION_PROMPT });
+        const transcription = await provider.transcribeAudio({ audioPath, prompt: AUDIO_TRANSCRIPTION_PROMPT, soulPrompt });
         const textPrompt = buildPromptWithQuote(TEXT_ANALYSIS_PROMPT, quotedContext);
-        return await provider.analyzeText({ text: transcription, prompt: textPrompt });
+        return await provider.analyzeText({ text: transcription, prompt: textPrompt, soulPrompt });
       }
     },
-    onSuccess: (analysis: unknown) => updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis)),
+    onSuccess: (analysis: unknown) => {
+      updateDraftAnalysis(channelCode, message.id, toAnalyzeResult(analysis));
+      addReaction(channel, message.id, '✅');
+    },
     onFailure: (err: Error) => logger.error(`LLM 语音分析失败: ${err.message}`),
   });
 }

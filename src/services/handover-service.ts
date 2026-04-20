@@ -92,17 +92,21 @@ export async function findPendingHandover(channelCode: string): Promise<Record<s
 export async function savePendingHandover(
   channelCode: string,
   sender: { id: string; name: string },
-  content: string
+  content: string,
+  llmVersion?: string
 ): Promise<void> {
   const dir = path.join(getDataDir(), `channels/${channelCode}/drafts`);
   await fs.mkdir(dir, { recursive: true });
 
-  const data = {
+  const data: Record<string, unknown> = {
     channelCode,
     sender: { id: sender.id, name: sender.name },
     content,
     createdAt: new Date().toISOString(),
   };
+  if (llmVersion) {
+    data.llmVersion = llmVersion;
+  }
   await fs.writeFile(path.join(dir, 'pending.json'), JSON.stringify(data, null, 2));
   autoCommit(`[handover] 保存待交接: ${channelCode}`);
 }

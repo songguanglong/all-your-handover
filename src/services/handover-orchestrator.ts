@@ -3,6 +3,9 @@ import { readDraft, clearDraft, parseDraftSections } from './draft-service';
 import { findPendingHandover as findPending, savePendingHandover as savePending, removePendingHandover as removePending, buildHandoverRecord, saveHandoverRecord, formatDate } from './handover-service';
 import { getChannelConfig, getTemplate, getSystemPrompt } from './config-service';
 import { getLatestHandover } from './context-service';
+import { getSoul, buildSoulPrompt } from './agent-soul-service';
+import { getExperience, buildExperiencePrompt, analyzeEditIntent } from './experience-service';
+import { addReaction } from './reaction-service';
 import { buildDraftCard, buildHandoverCard, buildCompletionCard } from '../channels/feishu-card-builder';
 
 interface PendingHandoverData {
@@ -32,7 +35,7 @@ export async function handleHandoverStart(
   channel: ChannelAdapter,
   chatId: string,
   channelCode: string,
-  generateHandover: (draft: string, template: string, previousHandover?: { id: string; date: string; body: string } | null, systemPrompt?: string) => Promise<string>
+  generateHandover: (draft: string, template: string, previousHandover?: { id: string; date: string; body: string } | null, systemPrompt?: string, soulPrompt?: string, experiencePrompt?: string) => Promise<string>
 ): Promise<void> {
   const channelConfig = await getChannelConfig(channelCode);
 
@@ -48,14 +51,21 @@ export async function handleHandoverStart(
     return;
   }
 
+  await addReaction(channel, chatId, '🤔');
+
   const template = await getTemplate(channelCode);
   const previousHandover = await getLatestHandover(channelCode);
   const systemPrompt = await getSystemPrompt(channelCode);
-  const handoverBody = await generateHandover(draft, template, previousHandover, systemPrompt);
+  const soul = await getSoul(channelCode);
+  const soulPrompt = buildSoulPrompt(soul);
+  const experience = await getExperience(channelCode);
+  const experiencePrompt = buildExperiencePrompt(experience);
+  const handoverBody = await generateHandover(draft, template, previousHandover, systemPrompt, soulPrompt, experiencePrompt);
 
   if (channelConfig?.settings.requireAccept) {
     // Mode A: need acceptance
-    await savePending(channelCode, sender, handoverBody);
+    await savePending(channelCode, sender, handoverBody, handoverBody);
+    await addReaction(channel, chatId, '✅');
     await channel.sendCard(chatId, buildHandoverCard(sender.name, handoverBody, true));
   } else {
     // Mode B: auto-archive
@@ -67,6 +77,7 @@ export async function handleHandoverStart(
     });
     await saveHandoverRecord(channelCode, filename, record);
     await clearDraft(channelCode);
+    await addReaction(channel, chatId, '✅');
     await channel.sendCard(chatId, buildHandoverCard(sender.name, handoverBody, false));
   }
 }
@@ -75,7 +86,8 @@ export async function handleHandoverAccept(
   receiver: UserInfo,
   channel: ChannelAdapter,
   chatId: string,
-  channelCode: string
+  channelCode: string,
+  getChatCompletion?: () => ((messages: Array<{ role: string; content: string }>) => Promise<string>) | null
 ): Promise<void> {
   const channelConfig = await getChannelConfig(channelCode);
 
@@ -96,19 +108,40 @@ export async function handleHandoverAccept(
     return;
   }
 
+  const finalBody = pending.content;
+  const llmVersion = (rawPending as Record<string, unknown>).llmVersion as string | undefined;
+
   const filename = `${formatDate()}_${pending.sender.id}_${receiver.id}.md`;
   const now = new Date().toISOString();
-  const record = await buildHandoverRecord(channelCode, pending.sender, receiver, pending.content, {
+  const record = await buildHandoverRecord(channelCode, pending.sender, receiver, finalBody, {
     requireAccept: true,
     createdAt: pending.createdAt,
     completedAt: now,
   });
   await saveHandoverRecord(channelCode, filename, record);
 
+  // Edit intent analysis: compare LLM version vs final (user-edited) version
+  if (llmVersion && llmVersion !== finalBody && getChatCompletion) {
+    const chatCompletion = getChatCompletion();
+    if (chatCompletion) {
+      try {
+        const entry = await analyzeEditIntent(channelCode, llmVersion, finalBody, chatCompletion);
+        if (entry) {
+          const { addEntry } = await import('./experience-service');
+          await addEntry(channelCode, entry);
+        }
+      } catch (err) {
+        // Edit intent analysis is non-critical
+        const { logger } = await import('../utils/logger');
+        logger.warn(`编辑意图分析失败: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+  }
+
   await clearDraft(channelCode);
   await removePending(channelCode);
 
-  await channel.sendCard(chatId, buildCompletionCard(pending.sender.name, receiver.name, pending.content));
+  await channel.sendCard(chatId, buildCompletionCard(pending.sender.name, receiver.name, finalBody));
 }
 
 export async function handleHandoverCancel(

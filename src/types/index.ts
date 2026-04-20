@@ -129,11 +129,12 @@ export interface ChannelAdapter {
   initialize(config: { platform: PlatformConfig; chatId: string }): Promise<void>;
   receiveMessage(event: unknown): Promise<Message | null>;
   sendMessage(chatId: string, message: MessageContent): Promise<void>;
-  sendCard(chatId: string, card: CardContent): Promise<void>;
+  sendCard(chatId: string, card: CardContent): Promise<string>;
   parseCommand(message: Message): Command | null;
   getUserInfo(userId: string): Promise<UserInfo>;
   getChatMembers(chatId: string): Promise<UserInfo[]>;
   fetchMessageContent(messageId: string): Promise<string | null>;
+  addReaction?(messageId: string, emoji: string): Promise<void>;
 }
 
 // --- LLM ---
@@ -158,6 +159,8 @@ export interface GenerateHandoverParams {
   template: string;
   previousHandover?: { id: string; date: string; body: string };
   systemPrompt?: string;
+  soulPrompt?: string;
+  experiencePrompt?: string;
 }
 
 export interface AnalyzeResult {
@@ -172,11 +175,11 @@ export interface LLMProvider {
   readonly name: string;
 
   initialize(config: LLMProviderConfig): Promise<void>;
-  analyzeText(params: AnalyzeTextParams): Promise<AnalyzeResult>;
-  analyzeImage(params: AnalyzeImageParams): Promise<AnalyzeResult>;
-  transcribeAudio(params: TranscribeParams): Promise<string>;
+  analyzeText(params: AnalyzeTextParams & { soulPrompt?: string }): Promise<AnalyzeResult>;
+  analyzeImage(params: AnalyzeImageParams & { soulPrompt?: string }): Promise<AnalyzeResult>;
+  transcribeAudio(params: TranscribeParams & { soulPrompt?: string }): Promise<string>;
   generateHandover(params: GenerateHandoverParams): Promise<string>;
-  chatCompletion(messages: Array<{ role: string; content: string | unknown[] }>): Promise<string>;
+  chatCompletion(messages: Array<{ role: string; content: string | unknown[] }>, thinkingMode?: ThinkingMode): Promise<string>;
 }
 
 export interface LLMProviderConfig {
@@ -201,6 +204,7 @@ export interface LLMTask {
   execute: () => Promise<unknown>;
   onSuccess: (result: unknown) => Promise<void> | void;
   onFailure: (error: Error) => Promise<void> | void;
+  thinkingMode?: ThinkingMode;
 }
 
 // --- Draft ---
@@ -225,6 +229,7 @@ export interface PendingHandover {
   };
   content: string;
   createdAt: string;
+  llmVersion?: string;
 }
 
 export interface HandoverMeta {
@@ -250,6 +255,7 @@ export interface CardAction {
   };
   formValue?: Record<string, string>;
   chatId: string;
+  messageId?: string;
 }
 
 // --- API Response ---
@@ -258,4 +264,47 @@ export interface ApiResponse {
   code: number;
   message?: string;
   data?: unknown;
+}
+
+// --- Agent Soul ---
+
+export interface AgentSoul {
+  persona: string;
+  scenario?: string;
+  customScenario?: string;
+  constraints: string[];
+  tone?: string;
+}
+
+export interface AgentSoulTemplate {
+  id: string;
+  name: string;
+  description: string;
+  soul: AgentSoul;
+}
+
+// --- Thinking Mode ---
+
+export type ThinkingMode = 'quick' | 'standard' | 'deep';
+
+// --- Experience (Agent Memory) ---
+
+export interface ExperienceEntry {
+  id: string;
+  createdAt: string;
+  source: 'edit' | 'dream';
+  rule: string;
+  context?: string;
+}
+
+export interface ExperienceFile {
+  entries: ExperienceEntry[];
+  lastDreamAt?: string;
+}
+
+// --- Dream ---
+
+export interface DreamConfig {
+  enabled: boolean;
+  cronHour: number;
 }

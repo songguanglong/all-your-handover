@@ -184,9 +184,9 @@ export class FeishuAdapter implements ChannelAdapter {
     await this.client.sendMessage(chatId, message.text);
   }
 
-  async sendCard(chatId: string, card: CardContent): Promise<void> {
+  async sendCard(chatId: string, card: CardContent): Promise<string> {
     const cardPayload = this.buildCardPayload(card);
-    await this.client.sendCard(chatId, cardPayload);
+    return this.client.sendCard(chatId, cardPayload);
   }
 
   private buildCardPayload(card: CardContent): Record<string, unknown> {
@@ -261,5 +261,9 @@ export class FeishuAdapter implements ChannelAdapter {
       logger.warn(`获取引用消息失败: ${err instanceof Error ? err.message : err}`);
       return null;
     }
+  }
+
+  async addReaction(messageId: string, emoji: string): Promise<void> {
+    await this.client.addReaction(messageId, emoji);
   }
 }
