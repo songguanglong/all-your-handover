@@ -198,6 +198,7 @@ export interface LLMProviderConfig {
 export interface LLMProvidersConfig {
   providers: LLMProviderConfig[];
   defaultProviderId: string | null;
+  routes?: LLMRoutesConfig;
 }
 
 export interface LLMTask {
@@ -316,6 +317,19 @@ export interface AgentSoulTemplate {
 // --- Thinking Mode ---
 
 export type ThinkingMode = 'quick' | 'standard' | 'deep';
+
+// --- LLM Routes ---
+
+export interface LLMRouteConfig {
+  providerId?: string;
+  temperature?: number;
+  thinking?: 'off' | 'adaptive';
+}
+
+export interface LLMRoutesConfig {
+  analyze?: LLMRouteConfig;
+  review?: LLMRouteConfig;
+}
 
 // --- Experience (Agent Memory) ---
 

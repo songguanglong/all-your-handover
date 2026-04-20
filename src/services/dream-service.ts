@@ -1,8 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { DreamConfig, ExperienceFile, ExperienceEntry } from '../types';
+import type { DreamConfig } from '../types';
 import { getDataDir } from '../utils/data-dir';
-import { getExperience, saveExperience } from './experience-service';
+import { logger } from '../utils/logger';
 
 let autoCommitFn: ((message: string) => Promise<void>) | null = null;
 
@@ -16,6 +16,10 @@ async function autoCommit(): Promise<void> {
 
 function dreamConfigPath(channelCode: string): string {
   return path.join(getDataDir(), `channels/${channelCode}/dream-config.json`);
+}
+
+function reviewsDir(channelCode: string): string {
+  return path.join(getDataDir(), `channels/${channelCode}/dreaming/reviews`);
 }
 
 const DEFAULT_DREAM_CONFIG: DreamConfig = { enabled: true, cronHour: 3 };
@@ -36,73 +40,155 @@ export async function saveDreamConfig(channelCode: string, config: DreamConfig):
   await autoCommit();
 }
 
+export interface DreamCandidate {
+  id: string;
+  content: string;
+  section: '用户偏好' | '模式识别' | '纠错记录' | '禁忌';
+  confidence: number;
+}
+
 export interface DreamReport {
-  originalCount: number;
-  optimizedCount: number;
-  optimizedRules: string[];
-  removed: string[];
+  modificationRate: number;
+  candidatesGenerated: number;
+  autoWritten: number;
+  pendingReview: number;
+}
+
+/** Calculate modification rate from diff counts */
+export function calculateModificationRate(originalCount: number, modifiedCount: number): number {
+  if (originalCount === 0) return 0;
+  return modifiedCount / originalCount;
+}
+
+/**
+ * Run post-handover dream (review) when modification rate > 30%.
+ * Returns null if not triggered.
+ */
+export async function runPostHandoverDream(
+  channelCode: string,
+  modificationRate: number,
+  chatCompletion: (messages: Array<{ role: string; content: string }>) => Promise<string>
+): Promise<DreamReport | null> {
+  const config = await getDreamConfig(channelCode);
+  if (!config.enabled) return null;
+
+  // Only trigger if modification rate > 30%
+  if (modificationRate <= 0.3) return null;
+
+  // Read channel memory and recent handovers for context
+  const { getChannelMemory } = await import('./channel-memory-service');
+  const memory = await getChannelMemory(channelCode);
+
+  const messages = [
+    {
+      role: 'system' as const,
+      content: `你是一个交接班复盘助手。根据交接记录的修改情况和渠道记忆，生成候选记忆条目。
+每条候选记忆包含：内容、所属section（用户偏好/模式识别/纠错记录/禁忌）、置信度（0-1）。
+输出JSON数组，格式：[{"content":"...","section":"...","confidence":0.9}]`,
+    },
+    {
+      role: 'user' as const,
+      content: `交接记录修改率: ${(modificationRate * 100).toFixed(0)}%\n\n渠道记忆：\n${memory}\n\n请分析并生成候选记忆条目：`,
+    },
+  ];
+
+  try {
+    const result = await chatCompletion(messages);
+    const candidates = parseDreamCandidates(result);
+    const report = await processCandidates(channelCode, candidates);
+
+    // Save review record
+    await saveReviewRecord(channelCode, modificationRate, candidates);
+
+    return report;
+  } catch (err) {
+    logger.error(`Dream review failed: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
+function parseDreamCandidates(raw: string): DreamCandidate[] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item: Record<string, unknown>) =>
+        typeof item.content === 'string' &&
+        typeof item.section === 'string' &&
+        typeof item.confidence === 'number'
+      )
+      .map((item: Record<string, unknown>, i: number) => ({
+        id: `d_${Date.now()}_${i}`,
+        content: item.content as string,
+        section: item.section as DreamCandidate['section'],
+        confidence: item.confidence as number,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function processCandidates(channelCode: string, candidates: DreamCandidate[]): Promise<DreamReport> {
+  const { saveChannelMemory, getChannelMemory } = await import('./channel-memory-service');
+  const memory = await getChannelMemory(channelCode);
+  let autoWritten = 0;
+  let pendingReview = 0;
+
+  for (const candidate of candidates) {
+    if (candidate.confidence >= 0.8) {
+      // Auto-write to memory
+      const line = `- ${candidate.content}`;
+      const updatedMemory = appendToMemorySection(memory, candidate.section, line);
+      await saveChannelMemory(channelCode, updatedMemory);
+      autoWritten++;
+    } else {
+      pendingReview++;
+    }
+  }
+
+  return {
+    modificationRate: 0,
+    candidatesGenerated: candidates.length,
+    autoWritten,
+    pendingReview,
+  };
+}
+
+function appendToMemorySection(memory: string, section: string, line: string): string {
+  const sectionRegex = new RegExp(`(## ${section}\\n)`);
+  if (sectionRegex.test(memory)) {
+    return memory.replace(sectionRegex, `$1${line}\n`);
+  }
+  return memory.trimEnd() + `\n\n## ${section}\n\n${line}\n`;
+}
+
+async function saveReviewRecord(channelCode: string, modificationRate: number, candidates: DreamCandidate[]): Promise<void> {
+  const dir = reviewsDir(channelCode);
+  await fs.mkdir(dir, { recursive: true });
+  const date = new Date().toISOString().split('T')[0];
+  const filePath = path.join(dir, `${date}.md`);
+
+  const content = `# 复盘记录 ${date}
+
+## 修改率
+${(modificationRate * 100).toFixed(0)}%
+
+## 候选条目
+${candidates.map(c => `- [${c.confidence >= 0.8 ? '已写入' : '待审'}] (${c.section}, confidence: ${c.confidence}) ${c.content}`).join('\n')}
+`;
+
+  await fs.writeFile(filePath, content, 'utf-8');
+  await autoCommit();
+}
+
+// Legacy compatibility — no longer used by scheduler
+export async function shouldRunDream(_channelCode: string): Promise<boolean> {
+  return false;
 }
 
 export async function runDream(
   channelCode: string,
   chatCompletion: (messages: Array<{ role: string; content: string }>) => Promise<string>
 ): Promise<DreamReport | null> {
-  const exp = await getExperience(channelCode);
-  if (exp.entries.length === 0) return null;
-
-  const rulesList = exp.entries.map((e, i) => `${i + 1}. [${e.source}] ${e.rule}`).join('\n');
-
-  const messages = [
-    {
-      role: 'system' as const,
-      content: '你是一个交接班经验规则优化助手。审视所有经验规则，识别重复、矛盾、可合并的规则，提炼更高层规律。输出优化后的规则列表，每行一条，以 "规则内容" 格式输出。不要编号，不要解释。',
-    },
-    {
-      role: 'user' as const,
-      content: `当前经验规则：\n${rulesList}\n\n请优化这些规则，去除重复，合并相关项，提炼更高层规律：`,
-    },
-  ];
-
-  try {
-    const result = await chatCompletion(messages);
-    const optimizedRules = result.trim().split('\n').map(l => l.trim()).filter(Boolean);
-
-    const originalRules = exp.entries.map(e => e.rule);
-    const removed = originalRules.filter(r => !optimizedRules.some(o => o.includes(r) || r.includes(o)));
-
-    const newEntries: ExperienceEntry[] = optimizedRules.map(rule => ({
-      id: `exp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: new Date().toISOString(),
-      source: 'dream' as const,
-      rule,
-      context: '由深度反思优化生成',
-    }));
-
-    exp.entries = newEntries;
-    exp.lastDreamAt = new Date().toISOString();
-    await saveExperience(channelCode, exp);
-
-    return {
-      originalCount: originalRules.length,
-      optimizedCount: optimizedRules.length,
-      optimizedRules,
-      removed,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function shouldRunDream(channelCode: string): Promise<boolean> {
-  const config = await getDreamConfig(channelCode);
-  if (!config.enabled) return false;
-
-  const exp = await getExperience(channelCode);
-  if (exp.entries.length === 0) return false;
-
-  if (!exp.lastDreamAt) return true;
-
-  const lastDream = new Date(exp.lastDreamAt);
-  const now = new Date();
-  return lastDream.toDateString() !== now.toDateString();
+  return runPostHandoverDream(channelCode, 0.5, chatCompletion);
 }

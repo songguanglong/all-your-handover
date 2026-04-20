@@ -1,4 +1,4 @@
-import type { LLMProvider, LLMProviderConfig } from '../types';
+import type { LLMProvider, LLMProviderConfig, LLMRoutesConfig } from '../types';
 import { BaseLLMProvider } from './base-provider';
 import { OpenAIProvider } from './openai-provider';
 import { DeepSeekProvider } from './deepseek-provider';
@@ -15,11 +15,13 @@ const providerClasses: Record<string, new () => BaseLLMProvider> = {
 class LLMProviderFactory {
   providers: Map<string, LLMProvider> = new Map();
   defaultProviderId: string | null = null;
+  routes: LLMRoutesConfig = {};
   initialized = false;
 
   async initializeAll(): Promise<void> {
     const config = await loadLLMProvidersConfig();
     this.defaultProviderId = config.defaultProviderId;
+    this.routes = config.routes || {};
 
     for (const pc of config.providers) {
       if (!pc.isEnabled) continue;
@@ -71,6 +73,23 @@ class LLMProviderFactory {
 
   hasDefault(): boolean {
     return this.defaultProviderId != null && this.providers.has(this.defaultProviderId);
+  }
+
+  /** Get provider for a specific task, using routes config if available */
+  getForTask(task: 'analyze' | 'review'): LLMProvider | null {
+    const route = this.routes[task];
+    if (route?.providerId) {
+      const provider = this.providers.get(route.providerId);
+      if (provider) return provider;
+    }
+    // Fallback to default
+    if (this.hasDefault()) return this.getDefault();
+    return null;
+  }
+
+  /** Get route config for a task */
+  getRouteConfig(task: 'analyze' | 'review'): LLMRoutesConfig['analyze'] | LLMRoutesConfig['review'] {
+    return this.routes[task];
   }
 }
 
