@@ -23,7 +23,7 @@
     const authCode = params.get('auth_code');
     if (authCode) {
       try {
-        const res = await fetch(API_BASE + '/auth/feishu?code=' + encodeURIComponent(authCode));
+        const res = await fetch(`${API_BASE}/auth/feishu?code=${encodeURIComponent(authCode)}`);
         const data = await res.json();
         if (data.code === 0 && data.data) {
           currentUser = data.data;
@@ -102,7 +102,7 @@
     badge.textContent = pendingNewItems.length;
 
     body.innerHTML = pendingNewItems.map(function(item) {
-      return '<div class="new-msg-item" id="newMsg-' + item.msgId + '">' +
+      return '<div class="new-msg-item" id="newMsg-' + escapeHtml(item.msgId) + '">' +
         '<div class="new-msg-sender">新消息</div>' +
         '<div class="new-msg-content">' + escapeHtml(item.content) + '</div>' +
         '<div class="new-msg-analysis">' +
@@ -110,11 +110,34 @@
           '<span class="tag ' + urgencyTagClass(item.urgency) + '">' + urgencyLabel(item.urgency) + '</span>' +
         '</div>' +
         '<div class="new-msg-actions">' +
-          '<button class="btn-include" onclick="window.H5.assignShift(\'' + item.msgId + '\', \'current\')">纳入交接 ✓</button>' +
-          '<button class="btn-exclude" onclick="window.H5.assignShift(\'' + item.msgId + '\', \'next\')">归入下一班 →</button>' +
+          '<button class="btn-include" data-msg-id="' + escapeHtml(item.msgId) + '" data-shift="current">纳入交接 ✓</button>' +
+          '<button class="btn-exclude" data-msg-id="' + escapeHtml(item.msgId) + '" data-shift="next">归入下一班 →</button>' +
         '</div>' +
       '</div>';
     }).join('');
+  }
+
+  // Event delegation for assign-shift and bulk-assign buttons (bound once at init)
+  function initDelegatedEvents() {
+    document.getElementById('newMsgBody').addEventListener('click', function(e) {
+      var btn = e.target.closest('button[data-msg-id]');
+      if (!btn) return;
+      var msgId = btn.getAttribute('data-msg-id');
+      var shift = btn.getAttribute('data-shift');
+      if (msgId && shift) {
+        assignShift(msgId, shift);
+      }
+    });
+
+    document.getElementById('bulkAssignList').addEventListener('click', function(e) {
+      var btn = e.target.closest('button[data-msg-id]');
+      if (!btn) return;
+      var msgId = btn.getAttribute('data-msg-id');
+      var shift = btn.getAttribute('data-shift');
+      if (msgId && shift) {
+        setBulkChoice(msgId, shift);
+      }
+    });
   }
 
   function escapeHtml(text) {
@@ -143,7 +166,7 @@
     }
 
     try {
-      var res = await fetch(API_BASE + '/draft/' + channelCode + '/assign-shift', {
+      var res = await fetch(`${API_BASE}/draft/${channelCode}/assign-shift`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ msgId: msgId, shift: shift }),
@@ -174,7 +197,7 @@
   async function refreshFromServer() {
     hideError();
     try {
-      var res = await fetch(API_BASE + '/draft/' + channelCode);
+      var res = await fetch(`${API_BASE}/draft/${channelCode}`);
       var data = await res.json();
       if (data.code !== 0) {
         showError(data.message || '刷新失败');
@@ -215,7 +238,7 @@
   async function loadDraft() {
     hideError();
     try {
-      var res = await fetch(API_BASE + '/draft/' + channelCode);
+      var res = await fetch(`${API_BASE}/draft/${channelCode}`);
       var data = await res.json();
       if (data.code !== 0) {
         showError(data.message || '加载失败');
@@ -257,7 +280,7 @@
 
   async function checkPendingState() {
     try {
-      var res = await fetch(API_BASE + '/handover/' + channelCode + '/pending');
+      var res = await fetch(`${API_BASE}/handover/${channelCode}/pending`);
       if (res.ok) {
         var data = await res.json();
         if (data.code === 0 && data.data) {
@@ -290,7 +313,7 @@
   function trySSE() {
     if (eventSource) { eventSource.close(); eventSource = null; }
     try {
-      eventSource = new EventSource(API_BASE + '/draft/' + channelCode + '/events');
+      eventSource = new EventSource(`${API_BASE}/draft/${channelCode}/events`);
       eventSource.addEventListener('update', function() {
         pollForUpdates();
       });
@@ -304,7 +327,7 @@
 
   async function pollForUpdates() {
     try {
-      var statusRes = await fetch(API_BASE + '/draft/' + channelCode + '/status');
+      var statusRes = await fetch(`${API_BASE}/draft/${channelCode}/status`);
       var statusData = await statusRes.json();
       if (statusData.code !== 0) return;
 
@@ -322,7 +345,7 @@
         return;
       }
 
-      var res = await fetch(API_BASE + '/draft/' + channelCode);
+      var res = await fetch(`${API_BASE}/draft/${channelCode}`);
       var data = await res.json();
       if (data.code !== 0) return;
 
@@ -391,7 +414,7 @@
     if (!content && editing) return;
 
     try {
-      var res = await fetch(API_BASE + '/draft/' + channelCode + '/preview', {
+      var res = await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: content }),
@@ -414,7 +437,7 @@
     if (editing) {
       var content = document.getElementById('editorArea').value;
       try {
-        var saveRes = await fetch(API_BASE + '/draft/' + channelCode + '/preview', {
+        var saveRes = await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: content }),
@@ -443,32 +466,36 @@
   function showBulkAssignModal() {
     bulkAssignChoices = {};
     var list = document.getElementById('bulkAssignList');
+
     list.innerHTML = pendingNewItems.map(function(item) {
       bulkAssignChoices[item.msgId] = 'current';
-      return '<div class="modal-item" id="modalItem-' + item.msgId + '">' +
+      return '<div class="modal-item">' +
         '<div class="modal-item-content">' +
           '<div class="item-text">' + escapeHtml(item.content) + '</div>' +
           '<div class="item-meta">' + escapeHtml(item.category) + ' · ' + urgencyLabel(item.urgency) + '</div>' +
         '</div>' +
         '<div class="item-actions">' +
-          '<button class="btn-this-shift selected" id="btnThis-' + item.msgId + '" onclick="window.H5.setBulkChoice(\'' + item.msgId + '\', \'current\')">本班 ✓</button>' +
-          '<button class="btn-next-shift" id="btnNext-' + item.msgId + '" onclick="window.H5.setBulkChoice(\'' + item.msgId + '\', \'next\')">下班 →</button>' +
+          '<button class="btn-this-shift selected" data-msg-id="' + escapeHtml(item.msgId) + '" data-shift="current">本班 ✓</button>' +
+          '<button class="btn-next-shift" data-msg-id="' + escapeHtml(item.msgId) + '" data-shift="next">下班 →</button>' +
         '</div>' +
       '</div>';
     }).join('');
+
     document.getElementById('bulkAssignModal').style.display = 'flex';
   }
 
   function setBulkChoice(msgId, shift) {
     bulkAssignChoices[msgId] = shift;
-    var thisBtn = document.getElementById('btnThis-' + msgId);
-    var nextBtn = document.getElementById('btnNext-' + msgId);
+    var container = document.getElementById('bulkAssignList');
+    if (!container) return;
+    var thisBtn = container.querySelector('button[data-msg-id="' + CSS.escape(msgId) + '"][data-shift="current"]');
+    var nextBtn = container.querySelector('button[data-msg-id="' + CSS.escape(msgId) + '"][data-shift="next"]');
     if (shift === 'current') {
-      thisBtn.classList.add('selected');
-      nextBtn.classList.remove('selected');
+      if (thisBtn) thisBtn.classList.add('selected');
+      if (nextBtn) nextBtn.classList.remove('selected');
     } else {
-      nextBtn.classList.add('selected');
-      thisBtn.classList.remove('selected');
+      if (nextBtn) nextBtn.classList.add('selected');
+      if (thisBtn) thisBtn.classList.remove('selected');
     }
   }
 
@@ -485,7 +512,7 @@
         var item = pendingNewItems[i];
         var shift = bulkAssignChoices[item.msgId] || 'current';
         try {
-          await fetch(API_BASE + '/draft/' + channelCode + '/assign-shift', {
+          await fetch(`${API_BASE}/draft/${channelCode}/assign-shift`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ msgId: item.msgId, shift: shift }),
@@ -510,7 +537,7 @@
       body.senderName = currentUser.name;
     }
     try {
-      var res = await fetch(API_BASE + '/handover/' + channelCode + '/start', {
+      var res = await fetch(`${API_BASE}/handover/${channelCode}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -537,7 +564,7 @@
       body.receiverName = currentUser.name;
     }
     try {
-      var res = await fetch(API_BASE + '/handover/' + channelCode + '/accept', {
+      var res = await fetch(`${API_BASE}/handover/${channelCode}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -559,7 +586,7 @@
   async function rejectHandover() {
     if (!confirm('确认打回？交班人需要重新编辑草稿。')) return;
     try {
-      var res = await fetch(API_BASE + '/handover/' + channelCode + '/reject', {
+      var res = await fetch(`${API_BASE}/handover/${channelCode}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -588,7 +615,6 @@
     acceptHandover: acceptHandover,
     rejectHandover: rejectHandover,
     refreshFromServer: refreshFromServer,
-    setBulkChoice: setBulkChoice,
     cancelBulkAssign: cancelBulkAssign,
     confirmBulkAssign: confirmBulkAssign,
   };
@@ -598,6 +624,7 @@
   if (!channelCode) {
     document.getElementById('status').textContent = '缺少渠道参数';
   } else {
+    initDelegatedEvents();
     authenticate().then(function() { loadDraft(); });
   }
 

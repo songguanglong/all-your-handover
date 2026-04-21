@@ -16,7 +16,7 @@ import { setAutoCommit as setChannelMemoryAutoCommit } from './services/channel-
 import { setAutoCommit as setExperienceAutoCommit } from './services/experience-service';
 import { setAutoCommit as setDreamAutoCommit } from './services/dream-service';
 import { setDraftUpdateNotifier as setRecordNotifier } from './services/record-service';
-import { notifyDraftUpdate } from './web/h5-api';
+import { notifyDraftUpdate } from './web/draft-events';
 
 // Global app instance
 let appInstance: App | null = null;

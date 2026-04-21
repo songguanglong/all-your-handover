@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { Message, ChannelAdapter, AnalyzeResult, LLMTask, LLMProvider, RawRecord, AnalysisItem } from '../types';
 import { appendRawRecord } from './draft-raw-service';
-import { updateAnalysis } from './draft-analysis-service';
+import { updateAnalysis, markItemRecalled } from './draft-analysis-service';
 import { incrementalUpdatePreview, removeItemFromPreview } from './draft-preview-service';
 import { validateAnalysis } from './analysis-validator';
 import { getSoul, buildSoulPrompt } from './soul-service';
@@ -240,7 +240,6 @@ export async function handleMessageRecalled(channelCode: string, messageId: stri
   await appendRawRecord(channelCode, tombstone);
 
   // Mark analysis item as recalled
-  const { markItemRecalled } = await import('./draft-analysis-service');
   await markItemRecalled(channelCode, messageId);
 
   // Remove from preview.md

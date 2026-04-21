@@ -3,7 +3,7 @@ import path from 'path';
 import type { AnalysisFile, AnalysisItem, CompletenessCheckResult } from '../types';
 import { getDataDir } from '../utils/data-dir';
 import { acquireLock, releaseLock } from '../utils/file-lock';
-import { readRawRecords } from './draft-raw-service';
+import { readActiveRawRecords } from './draft-raw-service';
 
 let autoCommitFn: ((message: string) => Promise<void>) | null = null;
 
@@ -143,25 +143,13 @@ export async function clearAnalysis(channelCode: string): Promise<void> {
 
 /** Check completeness: raw records vs analyzed items (excludes recalled & boundary records) */
 export async function completenessCheck(channelCode: string): Promise<CompletenessCheckResult> {
-  const [rawRecords, analysis] = await Promise.all([
-    readRawRecords(channelCode),
+  const [activeRecords, analysis] = await Promise.all([
+    readActiveRawRecords(channelCode),
     readAnalysis(channelCode),
   ]);
 
-  // Only count real message records after the last handover boundary (exclude recalled tombstones and boundaries)
-  let lastBoundaryIdx = -1;
-  for (let i = rawRecords.length - 1; i >= 0; i--) {
-    if (rawRecords[i].type === 'handover_boundary') {
-      lastBoundaryIdx = i;
-      break;
-    }
-  }
-  const relevantRecords = rawRecords.filter((r, i) =>
-    i > lastBoundaryIdx && r.type !== 'recalled' && r.type !== 'handover_boundary'
-  );
-
   const activeItems = analysis.items.filter(i => !i.recalled);
-  const totalRaw = relevantRecords.length;
+  const totalRaw = activeRecords.length;
   const totalAnalyzed = activeItems.length;
   return {
     totalRaw,

@@ -70,3 +70,18 @@ export async function writeHandoverBoundary(channelCode: string): Promise<void> 
   };
   await appendRawRecord(channelCode, boundary);
 }
+
+/** Read only real message records after the last handover boundary (excludes recalled/boundary) */
+export async function readActiveRawRecords(channelCode: string): Promise<RawRecord[]> {
+  const all = await readRawRecords(channelCode);
+  let lastBoundaryIdx = -1;
+  for (let i = all.length - 1; i >= 0; i--) {
+    if (all[i].type === 'handover_boundary') {
+      lastBoundaryIdx = i;
+      break;
+    }
+  }
+  return all.filter((r, i) =>
+    i > lastBoundaryIdx && r.type !== 'recalled' && r.type !== 'handover_boundary'
+  );
+}

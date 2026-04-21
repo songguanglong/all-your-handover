@@ -1,5 +1,4 @@
 import type { Router, Request, Response } from 'express';
-import { EventEmitter } from 'events';
 import { readPreview, updatePreview, removeItemFromPreview } from '../services/draft-preview-service';
 import { readRawRecords } from '../services/draft-raw-service';
 import { readAnalysis, completenessCheck, markItemShift } from '../services/draft-analysis-service';
@@ -13,15 +12,7 @@ import { analyzeEditIntent, addEntry } from '../services/experience-service';
 import { llmProviderFactory } from '../llm/llm-provider-factory';
 import { logger } from '../utils/logger';
 import type { AnalysisItem } from '../types';
-
-// SSE event bus for real-time draft updates
-const draftEvents = new EventEmitter();
-draftEvents.setMaxListeners(200);
-
-/** Notify SSE clients that draft data changed for a channel */
-export function notifyDraftUpdate(channelCode: string): void {
-  draftEvents.emit(`update:${channelCode}`);
-}
+import { onDraftUpdate, offDraftUpdate, notifyDraftUpdate } from './draft-events';
 
 interface DraftResponse {
   preview: string | null;
@@ -67,15 +58,30 @@ export function registerH5Routes(router: Router, prefix: string): void {
     res.write('event: connected\ndata: {}\n\n');
 
     const handler = () => {
-      res.write(`event: update\ndata: ${JSON.stringify({ channelCode })}\n\n`);
+      try {
+        res.write(`event: update\ndata: ${JSON.stringify({ channelCode })}\n\n`);
+      } catch {
+        offDraftUpdate(channelCode, handler);
+        clearInterval(heartbeat);
+      }
     };
 
-    const channelEvent = `update:${channelCode}`;
-    draftEvents.on(channelEvent, handler);
+    // Periodic heartbeat to keep connection alive (proxies/browsers close idle connections)
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(': heartbeat\n\n');
+      } catch {
+        offDraftUpdate(channelCode, handler);
+        clearInterval(heartbeat);
+      }
+    }, 30000);
+
+    onDraftUpdate(channelCode, handler);
 
     // Cleanup on close
     req.on('close', () => {
-      draftEvents.off(channelEvent, handler);
+      offDraftUpdate(channelCode, handler);
+      clearInterval(heartbeat);
     });
   });
 
