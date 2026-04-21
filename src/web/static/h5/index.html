@@ -255,7 +255,7 @@
       area.style.display = 'block';
       badge.textContent = pendingNewItems.length;
 
-      body.innerHTML = pendingNewItems.map((item, idx) => `
+      body.innerHTML = pendingNewItems.map(item => `
         <div class="new-msg-item" id="newMsg-${item.msgId}">
           <div class="new-msg-sender">新消息</div>
           <div class="new-msg-content">${escapeHtml(item.content)}</div>
@@ -264,8 +264,8 @@
             <span class="tag ${urgencyTagClass(item.urgency)}">${urgencyLabel(item.urgency)}</span>
           </div>
           <div class="new-msg-actions">
-            <button class="btn-include" onclick="assignShift('${item.msgId}', 'current', ${idx})">纳入交接 ✓</button>
-            <button class="btn-exclude" onclick="assignShift('${item.msgId}', 'next', ${idx})">归入下一班 →</button>
+            <button class="btn-include" onclick="assignShift('${item.msgId}', 'current')">纳入交接 ✓</button>
+            <button class="btn-exclude" onclick="assignShift('${item.msgId}', 'next')">归入下一班 →</button>
           </div>
         </div>
       `).join('');
@@ -289,7 +289,14 @@
       }
     }
 
-    async function assignShift(msgId, shift, idx) {
+    async function assignShift(msgId, shift) {
+      // Disable buttons for this item immediately to prevent double-click
+      const itemEl = document.getElementById(`newMsg-${msgId}`);
+      if (itemEl) {
+        const buttons = itemEl.querySelectorAll('button');
+        buttons.forEach(b => { b.disabled = true; });
+      }
+
       try {
         const res = await fetch(`${API_BASE}/draft/${channelCode}/assign-shift`, {
           method: 'POST',
@@ -298,8 +305,8 @@
         });
         const data = await res.json();
         if (data.code === 0) {
-          // Remove from pending list
-          pendingNewItems.splice(idx, 1);
+          // Remove from pending list by msgId (not index — avoids concurrent race)
+          pendingNewItems = pendingNewItems.filter(i => i.msgId !== msgId);
           assignedItems.add(msgId);
           knownMsgIds.add(msgId);
           renderNewMessages();
@@ -307,9 +314,18 @@
           await refreshFromServer();
         } else {
           showError(data.message || '操作失败');
+          // Re-enable buttons on failure
+          if (itemEl) {
+            const buttons = itemEl.querySelectorAll('button');
+            buttons.forEach(b => { b.disabled = false; });
+          }
         }
       } catch (err) {
         showError('网络错误');
+        if (itemEl) {
+          const buttons = itemEl.querySelectorAll('button');
+          buttons.forEach(b => { b.disabled = false; });
+        }
       }
     }
 
@@ -444,6 +460,27 @@
 
     async function pollForUpdates() {
       try {
+        // Lightweight poll — only fetch status, not full preview
+        const statusRes = await fetch(`${API_BASE}/draft/${channelCode}/status`);
+        const statusData = await statusRes.json();
+        if (statusData.code !== 0) return;
+
+        const s = statusData.data;
+
+        // If no new items since last check, just update completeness
+        if (s.lastUpdated === lastAnalysisUpdate) {
+          const compEl = document.getElementById('completeness');
+          if (s.missingCount > 0) {
+            compEl.textContent = `还有 ${s.missingCount} 条消息未分析（共 ${s.rawCount} 条）`;
+            compEl.className = 'completeness';
+          } else {
+            compEl.textContent = `全部 ${s.rawCount} 条消息已分析`;
+            compEl.className = 'completeness ok';
+          }
+          return;
+        }
+
+        // Something changed — fetch full data
         const res = await fetch(`${API_BASE}/draft/${channelCode}`);
         const data = await res.json();
         if (data.code !== 0) return;
@@ -454,7 +491,6 @@
         // Detect new items
         const newItems = detectNewItems(items);
         if (newItems.length > 0) {
-          // Add to pending notifications
           pendingNewItems = pendingNewItems.concat(newItems);
           renderNewMessages();
 
@@ -463,17 +499,19 @@
             document.getElementById('previewDisplay').innerHTML = renderMarkdown(d.preview || '暂无内容');
             document.getElementById('editorArea').value = d.preview || '';
           } else {
-            // In edit mode, show update banner
             const banner = document.getElementById('updateBanner');
             banner.style.display = 'flex';
             document.getElementById('updateBannerText').textContent =
               `有 ${newItems.length} 条新消息已分析完成`;
           }
 
-          // Add all new items to known set
           for (const item of items) {
             knownMsgIds.add(item.msgId);
           }
+        } else if (!editing) {
+          // No new items but data changed — refresh preview in view mode
+          document.getElementById('previewDisplay').innerHTML = renderMarkdown(d.preview || '暂无内容');
+          document.getElementById('editorArea').value = d.preview || '';
         }
 
         // Update completeness
@@ -545,12 +583,20 @@
       if (editing) {
         const content = document.getElementById('editorArea').value;
         try {
-          await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
+          const saveRes = await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content }),
           });
-        } catch {}
+          const saveData = await saveRes.json();
+          if (saveData.code !== 0) {
+            showError('保存草稿失败: ' + (saveData.message || '未知错误'));
+            return;
+          }
+        } catch (err) {
+          showError('保存草稿失败，请重试');
+          return;
+        }
       }
 
       // Check for unassigned new messages

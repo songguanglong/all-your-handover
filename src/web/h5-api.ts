@@ -39,6 +39,34 @@ interface HandoverRejectResponse {
 }
 
 export function registerH5Routes(router: Router, prefix: string): void {
+  // Lightweight status poll (for H5 periodic check — avoids fetching full preview)
+  router.get(`${prefix}/draft/:code/status`, async (req: Request, res: Response) => {
+    try {
+      const channelCode = req.params.code;
+      if (!/^[a-zA-Z0-9_]{1,50}$/.test(channelCode)) {
+        return res.status(400).json({ code: -1, message: '无效的渠道代码' });
+      }
+
+      const [analysis, check] = await Promise.all([
+        readAnalysis(channelCode),
+        completenessCheck(channelCode),
+      ]);
+
+      res.json({
+        code: 0,
+        data: {
+          rawCount: check.totalRaw,
+          analyzedCount: check.totalAnalyzed,
+          missingCount: check.missing,
+          lastUpdated: analysis.lastUpdated,
+          itemCount: analysis.items.length,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ code: -1, message: '获取状态失败' });
+    }
+  });
+
   // Get draft data (raw + analysis + preview)
   router.get(`${prefix}/draft/:code`, async (req: Request, res: Response) => {
     try {

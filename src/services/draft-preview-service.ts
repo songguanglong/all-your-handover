@@ -60,49 +60,22 @@ export async function updatePreview(channelCode: string, content: string): Promi
   await fs.mkdir(dp, { recursive: true });
   const p = previewPath(channelCode);
 
+  // Reconcile preview-items.json with markers still present in new content
+  // (do this OUTSIDE the preview lock to avoid nested locking with analysis)
+  const itemsFile = await readPreviewItems(channelCode);
+  const markerRegex = /<!-- msg:([a-zA-Z0-9_-]+) -->/g;
+  const remainingMsgIds = new Set<string>();
+  let match;
+  while ((match = markerRegex.exec(content)) !== null) {
+    remainingMsgIds.add(match[1]);
+  }
+  itemsFile.items = itemsFile.items.filter(i => remainingMsgIds.has(i.msgId));
+
+  // If user removed a marker, that's intentional — don't auto-restore.
+  // New items arriving during editing are handled by the H5 assign-shift flow.
+
   await acquireLock(p);
   try {
-    // Reconcile preview-items.json with markers still present in new content
-    const itemsFile = await readPreviewItems(channelCode);
-    const markerRegex = /<!-- msg:([a-zA-Z0-9_-]+) -->/g;
-    const remainingMsgIds = new Set<string>();
-    let match;
-    while ((match = markerRegex.exec(content)) !== null) {
-      remainingMsgIds.add(match[1]);
-    }
-    itemsFile.items = itemsFile.items.filter(i => remainingMsgIds.has(i.msgId));
-
-    // Re-add current-shift items that are missing from the saved content
-    // (they may have been added by incrementalUpdatePreview while the user was editing)
-    const { readAnalysis } = await import('./draft-analysis-service');
-    const analysis = await readAnalysis(channelCode);
-    for (const item of analysis.items) {
-      if (item.shift !== 'next' && !remainingMsgIds.has(item.msgId)) {
-        // This item belongs to current shift but is missing from user's content
-        // Append it to the preview
-        const line = formatItem(item);
-        const marker = `<!-- msg:${item.msgId} -->`;
-        const sectionRegex = new RegExp(`^## ${escapeRegex(item.category)}\\s*$`, 'm');
-
-        if (sectionRegex.test(content)) {
-          // Append to existing section
-          const sectionStart = content.indexOf(`## ${item.category}`);
-          const nextSection = content.indexOf('\n## ', sectionStart + 1);
-          const insertPos = nextSection >= 0 ? nextSection : content.length;
-          const before = content.slice(0, insertPos).trimEnd();
-          const after = content.slice(insertPos);
-          content = `${before}\n${line} ${marker}\n${after}`;
-        } else if (content.trim()) {
-          // Add new section
-          content = content.trimEnd() + `\n\n## ${item.category}\n\n${line} ${marker}\n`;
-        } else {
-          // Empty preview
-          content = `# 交接班记录\n\n## ${item.category}\n\n${line} ${marker}\n`;
-        }
-        itemsFile.items.push(item);
-      }
-    }
-
     await fs.writeFile(p, content, 'utf-8');
     await writePreviewItems(channelCode, itemsFile);
   } finally {
@@ -150,26 +123,26 @@ export async function removeItemFromPreview(channelCode: string, msgId: string):
   await autoCommit();
 }
 
-/** Remove empty sections (## Section with no items) from preview */
+/** Remove empty sections (## Section with no content below) from preview */
 function cleanEmptySections(preview: string): string {
   const lines = preview.split('\n');
   const result: string[] = [];
   let skipEmptySection = false;
-  let sectionHasItems = false;
+  let sectionHasContent = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (/^## /.test(line)) {
-      // Check if this section has any items
-      sectionHasItems = false;
+      // Check if this section has any content (not just list items)
+      sectionHasContent = false;
       for (let j = i + 1; j < lines.length; j++) {
         if (/^## /.test(lines[j])) break;
-        if (lines[j].startsWith('- ')) {
-          sectionHasItems = true;
+        if (lines[j].trim() !== '') {
+          sectionHasContent = true;
           break;
         }
       }
-      if (!sectionHasItems) {
+      if (!sectionHasContent) {
         skipEmptySection = true;
         continue;
       }
