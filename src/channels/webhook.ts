@@ -2,7 +2,7 @@ import type { Express, Request, Response } from 'express';
 import { verifyFeishuSignature } from './feishu-signature';
 import { channelFactory } from './channel-factory';
 import { findChannelCodeByChatId, getChannelConfig } from '../services/config-service';
-import { handleTextMessage, handleImageMessage, handleAudioMessage } from '../services/record-service';
+import { handleTextMessage, handleImageMessage, handleAudioMessage, handleMessageRecalled } from '../services/record-service';
 import { handleHandoverStart } from '../services/handover-orchestrator';
 import { handleCardAction } from '../services/card-callback-service';
 import { llmProviderFactory } from '../llm/llm-provider-factory';
@@ -24,6 +24,22 @@ export function registerWebhookRoutes(app: Express): void {
       // Challenge verification (first-time setup)
       if (body.challenge) {
         return res.json({ challenge: body.challenge });
+      }
+
+      // Handle message retraction event
+      const eventType = body.header?.event_type || body.event?.header?.event_type;
+      if (eventType === 'im.message.recalled_v1') {
+        const recalledMsgId = body.event?.message?.message_id;
+        if (recalledMsgId) {
+          const chatIdForRecall = body.event?.message?.chat_id;
+          const channelCodeForRecall = chatIdForRecall
+            ? await findChannelCodeByChatId(chatIdForRecall)
+            : null;
+          if (channelCodeForRecall) {
+            await handleMessageRecalled(channelCodeForRecall, recalledMsgId);
+          }
+        }
+        return res.json({ code: 0 });
       }
 
       const chatId = body.event?.message?.chat_id;

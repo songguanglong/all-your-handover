@@ -227,9 +227,10 @@ export interface RawRecord {
   ts: string;
   sender: string;
   sender_name: string;
-  type: ContentType;
+  type: ContentType | 'recalled' | 'handover_boundary';
   content: string;
   quoted_context: string | null;
+  recalled_msg_id?: string;   // set when type='recalled': refers to the original message id
 }
 
 export interface AnalysisItem {
@@ -239,6 +240,7 @@ export interface AnalysisItem {
   urgency: 'high' | 'normal' | 'low';
   shift?: 'current' | 'next';    // 'next' = excluded from current handover
   analyzedAt?: string;            // ISO timestamp when analyzed
+  recalled?: boolean;             // true when the original message was recalled
 }
 
 export interface AnalysisFile {

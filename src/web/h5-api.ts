@@ -1,4 +1,5 @@
 import type { Router, Request, Response } from 'express';
+import { EventEmitter } from 'events';
 import { readPreview, updatePreview, removeItemFromPreview } from '../services/draft-preview-service';
 import { readRawRecords } from '../services/draft-raw-service';
 import { readAnalysis, completenessCheck, markItemShift } from '../services/draft-analysis-service';
@@ -12,6 +13,15 @@ import { analyzeEditIntent, addEntry } from '../services/experience-service';
 import { llmProviderFactory } from '../llm/llm-provider-factory';
 import { logger } from '../utils/logger';
 import type { AnalysisItem } from '../types';
+
+// SSE event bus for real-time draft updates
+const draftEvents = new EventEmitter();
+draftEvents.setMaxListeners(200);
+
+/** Notify SSE clients that draft data changed for a channel */
+export function notifyDraftUpdate(channelCode: string): void {
+  draftEvents.emit(`update:${channelCode}`);
+}
 
 interface DraftResponse {
   preview: string | null;
@@ -39,6 +49,36 @@ interface HandoverRejectResponse {
 }
 
 export function registerH5Routes(router: Router, prefix: string): void {
+  // SSE endpoint for real-time draft updates
+  router.get(`${prefix}/draft/:code/events`, async (req: Request, res: Response) => {
+    const channelCode = req.params.code;
+    if (!/^[a-zA-Z0-9_]{1,50}$/.test(channelCode)) {
+      return res.status(400).json({ code: -1, message: '无效的渠道代码' });
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    // Send initial heartbeat
+    res.write('event: connected\ndata: {}\n\n');
+
+    const handler = () => {
+      res.write(`event: update\ndata: ${JSON.stringify({ channelCode })}\n\n`);
+    };
+
+    const channelEvent = `update:${channelCode}`;
+    draftEvents.on(channelEvent, handler);
+
+    // Cleanup on close
+    req.on('close', () => {
+      draftEvents.off(channelEvent, handler);
+    });
+  });
+
   // Lightweight status poll (for H5 periodic check — avoids fetching full preview)
   router.get(`${prefix}/draft/:code/status`, async (req: Request, res: Response) => {
     try {
@@ -87,7 +127,7 @@ export function registerH5Routes(router: Router, prefix: string): void {
         rawCount: check.totalRaw,
         analyzedCount: check.totalAnalyzed,
         missingCount: check.missing,
-        items: analysis.items,
+        items: analysis.items.filter(i => !i.recalled),
         lastUpdated: analysis.lastUpdated,
       };
 
@@ -114,6 +154,8 @@ export function registerH5Routes(router: Router, prefix: string): void {
       const analysis = await readAnalysis(channelCode);
 
       await updatePreview(channelCode, content);
+
+      notifyDraftUpdate(channelCode);
 
       // P1-2: Diff detection on preview save
       if (oldPreview && analysis.items.length > 0) {
@@ -312,6 +354,8 @@ export function registerH5Routes(router: Router, prefix: string): void {
         // Remove from preview.md
         await removeItemFromPreview(channelCode, msgId);
       }
+
+      notifyDraftUpdate(channelCode);
 
       res.json({ code: 0, message: shift === 'current' ? '已纳入当前交接' : '已归入下一班' });
     } catch (err) {

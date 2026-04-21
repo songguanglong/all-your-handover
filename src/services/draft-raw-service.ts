@@ -57,14 +57,16 @@ export async function readRawRecords(channelCode: string): Promise<RawRecord[]> 
   }
 }
 
-/** Clear all raw records (used after handover archival) */
-export async function clearRawRecords(channelCode: string): Promise<void> {
-  const p = rawPath(channelCode);
-  await acquireLock(p);
-  try {
-    await fs.writeFile(p, '', 'utf-8');
-  } finally {
-    releaseLock(p);
-  }
-  await autoCommit();
+/** Write a handover boundary marker to raw.jsonl (instead of clearing it) */
+export async function writeHandoverBoundary(channelCode: string): Promise<void> {
+  const boundary: RawRecord = {
+    id: `boundary_${Date.now()}`,
+    ts: new Date().toISOString(),
+    sender: '',
+    sender_name: '',
+    type: 'handover_boundary',
+    content: '--- 交接班分界线 ---',
+    quoted_context: null,
+  };
+  await appendRawRecord(channelCode, boundary);
 }

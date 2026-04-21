@@ -27,12 +27,16 @@ Single-process Node.js server. No database — all data is Markdown/JSON files u
 ```
 Feishu webhook → webhook.ts → verify signature → find channel by chatId
   ├─ Command (@自己 交班) → handover-orchestrator.ts → save pending → send card with H5 link
-  └─ Message → record-service.ts → append raw + enqueue LLM task → llm-queue.ts
-       └─ LLM analysis → update analysis.json + incrementalUpdatePreview (preview.md + preview-items.json)
+  ├─ Message → record-service.ts → append raw + enqueue LLM task → llm-queue.ts
+  │    └─ LLM analysis → update analysis.json + incrementalUpdatePreview (preview.md + preview-items.json) → notifyDraftUpdate (SSE)
+  └─ Message Recalled → record-service.ts → append tombstone to raw.jsonl + mark analysis recalled + remove from preview → notifyDraftUpdate (SSE)
 
 H5 Page → h5-api.ts
-  ├─ GET /draft/:code         → load draft data (raw count, analysis items, preview)
-  ├─ PUT /draft/:code/preview → save user edit → diff detection → experience learning
+  ├─ GET  /draft/:code/events   → SSE endpoint for real-time updates (falls back to polling)
+  ├─ GET  /draft/:code/status   → lightweight poll (raw count, analysis count, missing)
+  ├─ GET  /draft/:code          → load draft data (raw count, analysis items, preview)
+  ├─ PUT  /draft/:code/preview → save user edit → diff detection → experience learning → notifyDraftUpdate
+  ├─ POST /draft/:code/assign-shift → mark item shift (current/next) → notifyDraftUpdate
   ├─ POST /handover/:code/start  → handleHandoverStart (save pending)
   ├─ POST /handover/:code/accept → handleHandoverAccept (archive or self-confirm)
   └─ POST /handover/:code/reject → handleHandoverReject (打回)
@@ -52,10 +56,10 @@ Memory Loop:
 - **Context Service** (`context-service.ts`): Loads previous handover records for LLM context injection during handover generation. Pure code, no LLM calls.
 - **Config Service** (`config-service.ts`): Manages channel configs, LLM providers, templates, and system prompts. `getSystemPrompt()` returns per-channel prompt or default.
 - **Draft Storage** (split across 4 files):
-  - `draft-raw-service.ts`: Append-only `raw.jsonl` for raw message records
-  - `draft-analysis-service.ts`: `analysis.json` for LLM analysis items, completeness checking
+  - `draft-raw-service.ts`: Append-only `raw.jsonl` for raw message records. Never cleared on handover — writes a `handover_boundary` marker instead.
+  - `draft-analysis-service.ts`: `analysis.json` for LLM analysis items, completeness checking. Supports `recalled` flag and `shift` assignment.
   - `draft-preview-service.ts`: `preview.md` for structured handover preview + `preview-items.json` for robust item tracking (survives user edits that remove HTML markers)
-- **Record Service** (`record-service.ts`): Core message handler. `buildContextPrompt()` assembles soul + agents + channel-memory + experience for LLM prompt injection. Handles text/image/audio, enqueues LLM analysis.
+- **Record Service** (`record-service.ts`): Core message handler. `buildContextPrompt()` assembles soul + agents + channel-memory + experience for LLM prompt injection. Handles text/image/audio, enqueues LLM analysis. Also handles message retraction via `handleMessageRecalled()`. Notifies SSE via `setDraftUpdateNotifier()`.
 - **Handover Orchestrator** (`handover-orchestrator.ts`): Both modes (requireAccept=true/false) save as pending and require H5 confirmation. Mode A requires a different person to accept; Mode B allows the sender to self-confirm.
 - **Encryption** (`encryption.ts`): AES-256-GCM. Key from `ENCRYPTION_KEY` env (SHA-256 derived) or auto-generated random key persisted to `data/config/.encryption-key` (mode 0o600).
 
@@ -70,7 +74,7 @@ Memory Loop:
 
 ### H5 Mobile Web
 
-- **H5 API** (`h5-api.ts`): Draft viewing, preview editing (with diff detection + experience learning), handover start/accept/reject.
+- **H5 API** (`h5-api.ts`): Draft viewing, preview editing (with diff detection + experience learning), handover start/accept/reject, SSE endpoint (`/draft/:code/events`), shift assignment. Exports `notifyDraftUpdate()` for SSE event bus.
 - **H5 Auth** (`h5-auth.ts`): Feishu JS-SDK OAuth. Frontend calls `GET /api/h5/auth/feishu?code=xxx` to exchange auth code for user identity. Falls back to anonymous (`h5_user`) when auth unavailable.
 
 ### Model Routing
@@ -90,7 +94,7 @@ data/
     .encryption-key         # Auto-generated if no ENCRYPTION_KEY env
   channels/<code>/
     drafts/
-      raw.jsonl             # Raw message records (append-only)
+      raw.jsonl             # Raw message records (append-only, never cleared; handover_boundary markers separate shifts)
       analysis.json         # LLM analysis items
       preview.md            # Structured handover preview (Markdown, <!-- msg:ID --> markers)
       preview-items.json    # Parallel structured item tracking (survives user edits)
@@ -128,6 +132,9 @@ data/
 - **Model routing**: Use `getForTask('analyze')` for analysis tasks, `getForTask('review')` for review tasks. Both fall back to `getDefault()`.
 - **Preview markers**: `<!-- msg:ID -->` in preview.md are the primary linking mechanism. `preview-items.json` is the parallel structured tracker. When user edits remove markers, `updatePreview()` reconciles items.json by scanning remaining markers.
 - **Handover confirmation**: Both `requireAccept` modes save as pending. Mode A (requireAccept=true) requires a different person to accept. Mode B (requireAccept=false) allows the sender to self-confirm. No auto-archive.
+- **Message retraction**: Feishu `im.message.recalled_v1` events are handled by appending a `type: 'recalled'` tombstone to `raw.jsonl`, marking the analysis item as recalled, and removing the item from `preview.md`.
+- **raw.jsonl preservation**: On handover archival, `raw.jsonl` is NOT cleared. A `type: 'handover_boundary'` record is written. `completenessCheck` only counts records after the last boundary, excluding recalled tombstones.
+- **SSE for H5**: `h5-api.ts` exports `notifyDraftUpdate(channelCode)` which pushes events via EventEmitter. H5 frontend uses EventSource with polling fallback. Notifications triggered by: LLM analysis completion, preview edit, shift assignment, message retraction.
 - **Tests**: vitest with `globals: true`, `environment: 'node'`. Test files in `test/`. Each test sets `DATA_DIR` to a temp dir and cleans up in `afterEach`
 
 ## License

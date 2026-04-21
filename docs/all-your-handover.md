@@ -347,10 +347,12 @@ data/
 
 草稿拆分为 4 个文件：
 
-**raw.jsonl** — 原始消息记录（追加写入）
+**raw.jsonl** — 原始消息记录（追加写入，交接不清空，写handover_boundary标记）
 ```jsonl
 {"id":"msg_xxx","ts":"2026-04-01T14:30:00Z","sender":"ou_xxx","sender_name":"张三","type":"text","content":"302客人要加床","quoted_context":null}
 {"id":"msg_yyy","ts":"2026-04-01T15:00:00Z","sender":"ou_xxx","sender_name":"张三","type":"image","content":"[图片: /data/channels/qiantai/media/images/msg_yyy.jpg]","quoted_context":null}
+{"id":"recalled_msg_xxx","ts":"2026-04-01T14:35:00Z","sender":"","sender_name":"","type":"recalled","content":"(消息已撤回)","quoted_context":null,"recalled_msg_id":"msg_xxx"}
+{"id":"boundary_1745264400000","ts":"2026-04-01T16:00:00Z","sender":"","sender_name":"","type":"handover_boundary","content":"--- 交接班分界线 ---","quoted_context":null}
 ```
 
 **analysis.json** — LLM 分析结果
@@ -493,9 +495,11 @@ GET /api/h5/auth/feishu?code=xxx   飞书 JS-SDK OAuth（auth_code 换用户信�
 
 **草稿**：
 ```
-GET /api/h5/draft/:code            获取草稿数据（preview + raw count + analysis items + lastUpdated）
-PUT /api/h5/draft/:code/preview    保存预览编辑（触发 diff 检测 + 经验学习）
-POST /api/h5/draft/:code/assign-shift  归属班次（纳入交接/归入下一班）
+GET  /api/h5/draft/:code/events    SSE 实时更新（EventSource，后端推送变更事件）
+GET  /api/h5/draft/:code/status    轻量状态轮询（raw count + analysis count + missing + lastUpdated）
+GET  /api/h5/draft/:code           获取草稿数据（preview + raw count + analysis items + lastUpdated）
+PUT  /api/h5/draft/:code/preview   保存预览编辑（触发 diff 检测 + 经验学习 + SSE 通知）
+POST /api/h5/draft/:code/assign-shift  归属班次（纳入交接/归入下一班 + SSE 通知）
 ```
 
 **交接**：

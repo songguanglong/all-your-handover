@@ -1,6 +1,6 @@
 import type { UserInfo, ChannelAdapter } from '../types';
 import { readPreview, clearPreview } from './draft-preview-service';
-import { clearRawRecords } from './draft-raw-service';
+import { writeHandoverBoundary } from './draft-raw-service';
 import { clearAnalysis, completenessCheck } from './draft-analysis-service';
 import { findPendingHandover as findPending, savePendingHandover as savePending, removePendingHandover as removePending, buildHandoverRecord, saveHandoverRecord, formatDate } from './handover-service';
 import { getChannelConfig } from './config-service';
@@ -105,10 +105,10 @@ export async function handleHandoverReject(
   await channel.sendMessage(chatId, { type: 'text', text: '交班已被打回，交班人可重新编辑草稿后再发起交班。' });
 }
 
-/** Clear all draft data (raw + analysis + preview) after archival */
+/** Clear draft data after archival (keep raw.jsonl with boundary marker) */
 async function clearDraftData(channelCode: string): Promise<void> {
   await Promise.all([
-    clearRawRecords(channelCode),
+    writeHandoverBoundary(channelCode),
     clearAnalysis(channelCode),
     clearPreview(channelCode),
   ]);

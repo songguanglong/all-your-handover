@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
-import { readAnalysis, updateAnalysis, clearAnalysis, completenessCheck } from '../src/services/draft-analysis-service';
-import { appendRawRecord } from '../src/services/draft-raw-service';
+import { readAnalysis, updateAnalysis, clearAnalysis, completenessCheck, markItemRecalled, markItemShift } from '../src/services/draft-analysis-service';
+import { appendRawRecord, writeHandoverBoundary } from '../src/services/draft-raw-service';
 import type { RawRecord, AnalysisItem } from '../src/types';
 
 const TMP_DIR = path.join(__dirname, '__tmp_draft_analysis_test');
@@ -67,6 +67,24 @@ describe('Draft Analysis Service', () => {
     });
   });
 
+  describe('markItemRecalled', () => {
+    it('marks an item as recalled', async () => {
+      await updateAnalysis('test', { msgId: 'msg_001', category: '待办事项', content: 'A', urgency: 'normal' });
+      await markItemRecalled('test', 'msg_001');
+      const analysis = await readAnalysis('test');
+      expect(analysis.items[0].recalled).toBe(true);
+    });
+  });
+
+  describe('markItemShift', () => {
+    it('marks an item shift to next', async () => {
+      await updateAnalysis('test', { msgId: 'msg_001', category: '待办事项', content: 'A', urgency: 'normal' });
+      await markItemShift('test', 'msg_001', 'next');
+      const analysis = await readAnalysis('test');
+      expect(analysis.items[0].shift).toBe('next');
+    });
+  });
+
   describe('completenessCheck', () => {
     it('returns zero missing when all analyzed', async () => {
       const record: RawRecord = { id: 'msg_001', ts: '', sender: 'ou_1', sender_name: 'A', type: 'text', content: 'test', quoted_context: null };
@@ -88,6 +106,30 @@ describe('Draft Analysis Service', () => {
       expect(result.totalRaw).toBe(2);
       expect(result.totalAnalyzed).toBe(1);
       expect(result.missing).toBe(1);
+    });
+
+    it('excludes recalled tombstones and boundary records from raw count', async () => {
+      const r1: RawRecord = { id: 'msg_001', ts: '', sender: 'ou_1', sender_name: 'A', type: 'text', content: 'a', quoted_context: null };
+      await appendRawRecord('test', r1);
+      await writeHandoverBoundary('test');
+      const r2: RawRecord = { id: 'msg_002', ts: '', sender: 'ou_1', sender_name: 'A', type: 'text', content: 'b', quoted_context: null };
+      await appendRawRecord('test', r2);
+      const tombstone: RawRecord = { id: 'recalled_msg_002', ts: '', sender: '', sender_name: '', type: 'recalled', content: '(消息已撤回)', quoted_context: null, recalled_msg_id: 'msg_002' };
+      await appendRawRecord('test', tombstone);
+
+      // Only msg_002 is after the boundary
+      const result = await completenessCheck('test');
+      expect(result.totalRaw).toBe(1); // only msg_002 (r1 is before boundary, tombstone excluded)
+    });
+
+    it('excludes recalled items from analyzed count', async () => {
+      const r1: RawRecord = { id: 'msg_001', ts: '', sender: 'ou_1', sender_name: 'A', type: 'text', content: 'a', quoted_context: null };
+      await appendRawRecord('test', r1);
+      await updateAnalysis('test', { msgId: 'msg_001', category: '待办事项', content: 'a', urgency: 'normal' });
+      await markItemRecalled('test', 'msg_001');
+      const result = await completenessCheck('test');
+      expect(result.totalAnalyzed).toBe(0); // recalled item excluded
+      expect(result.totalRaw).toBe(1);
     });
   });
 });

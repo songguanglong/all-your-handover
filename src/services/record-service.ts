@@ -3,7 +3,7 @@ import path from 'path';
 import type { Message, ChannelAdapter, AnalyzeResult, LLMTask, LLMProvider, RawRecord, AnalysisItem } from '../types';
 import { appendRawRecord } from './draft-raw-service';
 import { updateAnalysis } from './draft-analysis-service';
-import { incrementalUpdatePreview } from './draft-preview-service';
+import { incrementalUpdatePreview, removeItemFromPreview } from './draft-preview-service';
 import { validateAnalysis } from './analysis-validator';
 import { getSoul, buildSoulPrompt } from './soul-service';
 import { getAgents, buildAgentsPrompt } from './agents-service';
@@ -12,6 +12,17 @@ import { getExperience, buildExperiencePrompt } from './experience-service';
 import { addReaction } from './reaction-service';
 import { logger } from '../utils/logger';
 import { getDataDir } from '../utils/data-dir';
+
+// Pluggable notifier for draft updates (wired in app.ts to SSE event bus)
+let draftUpdateNotifier: ((channelCode: string) => void) | null = null;
+
+export function setDraftUpdateNotifier(fn: ((channelCode: string) => void) | null): void {
+  draftUpdateNotifier = fn;
+}
+
+function notifyDraftUpdate(channelCode: string): void {
+  if (draftUpdateNotifier) draftUpdateNotifier(channelCode);
+}
 
 const VALID_CATEGORIES_PROMPT = '重要事项, 一般事项, 待办事项, 待跟进事项, 客房, 设备, 安全, 客户, 未分类';
 const TEXT_ANALYSIS_PROMPT = `分析以下交接班消息，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}\ncategory 必须是以下之一: ${VALID_CATEGORIES_PROMPT}`;
@@ -57,7 +68,7 @@ function handleAnalysisResult(channelCode: string, messageId: string, rawResult:
   return Promise.all([
     updateAnalysis(channelCode, item),
     incrementalUpdatePreview(channelCode, item),
-  ]).then(() => {});
+  ]).then(() => { notifyDraftUpdate(channelCode); });
 }
 
 export async function handleTextMessage(
@@ -211,4 +222,31 @@ export async function handleAudioMessage(
     },
     onFailure: (err: Error) => logger.error(`LLM 语音分析失败: ${err.message}`),
   });
+}
+
+/** Handle message retraction: append tombstone, mark analysis, remove from preview */
+export async function handleMessageRecalled(channelCode: string, messageId: string): Promise<void> {
+  // Append tombstone record to raw.jsonl
+  const tombstone: RawRecord = {
+    id: `recalled_${messageId}`,
+    ts: new Date().toISOString(),
+    sender: '',
+    sender_name: '',
+    type: 'recalled',
+    content: '(消息已撤回)',
+    quoted_context: null,
+    recalled_msg_id: messageId,
+  };
+  await appendRawRecord(channelCode, tombstone);
+
+  // Mark analysis item as recalled
+  const { markItemRecalled } = await import('./draft-analysis-service');
+  await markItemRecalled(channelCode, messageId);
+
+  // Remove from preview.md
+  await removeItemFromPreview(channelCode, messageId);
+
+  notifyDraftUpdate(channelCode);
+
+  logger.info(`消息已撤回: ${messageId} (渠道: ${channelCode})`);
 }

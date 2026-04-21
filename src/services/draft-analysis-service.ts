@@ -104,6 +104,31 @@ export async function markItemShift(channelCode: string, msgId: string, shift: '
   await autoCommit();
 }
 
+/** Mark an analysis item as recalled (message was retracted by sender) */
+export async function markItemRecalled(channelCode: string, msgId: string): Promise<void> {
+  const p = analysisPath(channelCode);
+  await acquireLock(p);
+  try {
+    let file: AnalysisFile;
+    try {
+      const data = await fs.readFile(p, 'utf-8');
+      file = JSON.parse(data) as AnalysisFile;
+    } catch {
+      file = emptyAnalysis();
+    }
+
+    const idx = file.items.findIndex(i => i.msgId === msgId);
+    if (idx >= 0) {
+      file.items[idx].recalled = true;
+      file.lastUpdated = new Date().toISOString();
+      await fs.writeFile(p, JSON.stringify(file, null, 2), 'utf-8');
+    }
+  } finally {
+    releaseLock(p);
+  }
+  await autoCommit();
+}
+
 /** Clear all analysis data (used after handover archival) */
 export async function clearAnalysis(channelCode: string): Promise<void> {
   const p = analysisPath(channelCode);
@@ -116,14 +141,28 @@ export async function clearAnalysis(channelCode: string): Promise<void> {
   await autoCommit();
 }
 
-/** Check completeness: raw records vs analyzed items */
+/** Check completeness: raw records vs analyzed items (excludes recalled & boundary records) */
 export async function completenessCheck(channelCode: string): Promise<CompletenessCheckResult> {
   const [rawRecords, analysis] = await Promise.all([
     readRawRecords(channelCode),
     readAnalysis(channelCode),
   ]);
-  const totalRaw = rawRecords.length;
-  const totalAnalyzed = analysis.items.length;
+
+  // Only count real message records after the last handover boundary (exclude recalled tombstones and boundaries)
+  let lastBoundaryIdx = -1;
+  for (let i = rawRecords.length - 1; i >= 0; i--) {
+    if (rawRecords[i].type === 'handover_boundary') {
+      lastBoundaryIdx = i;
+      break;
+    }
+  }
+  const relevantRecords = rawRecords.filter((r, i) =>
+    i > lastBoundaryIdx && r.type !== 'recalled' && r.type !== 'handover_boundary'
+  );
+
+  const activeItems = analysis.items.filter(i => !i.recalled);
+  const totalRaw = relevantRecords.length;
+  const totalAnalyzed = activeItems.length;
   return {
     totalRaw,
     totalAnalyzed,

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
-import { appendRawRecord, readRawRecords, clearRawRecords } from '../src/services/draft-raw-service';
+import { appendRawRecord, readRawRecords, writeHandoverBoundary } from '../src/services/draft-raw-service';
 import type { RawRecord } from '../src/types';
 
 const TMP_DIR = path.join(__dirname, '__tmp_draft_raw_test');
@@ -52,13 +52,15 @@ describe('Draft Raw Service', () => {
     });
   });
 
-  describe('clearRawRecords', () => {
-    it('clears all records', async () => {
-      const record: RawRecord = { id: 'msg_001', ts: '', sender: 'ou_1', sender_name: 'A', type: 'text', content: 'test', quoted_context: null };
-      await appendRawRecord('test', record);
-      await clearRawRecords('test');
+  describe('writeHandoverBoundary', () => {
+    it('writes a boundary marker record preserving existing records', async () => {
+      const r1: RawRecord = { id: 'msg_001', ts: '', sender: 'ou_1', sender_name: 'A', type: 'text', content: 'hello', quoted_context: null };
+      await appendRawRecord('test', r1);
+      await writeHandoverBoundary('test');
       const records = await readRawRecords('test');
-      expect(records).toEqual([]);
+      expect(records).toHaveLength(2);
+      expect(records[0].content).toBe('hello');
+      expect(records[1].type).toBe('handover_boundary');
     });
   });
 });
