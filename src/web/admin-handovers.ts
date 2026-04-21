@@ -91,7 +91,7 @@ export function registerHandoverRoutes(router: import('express').Router, prefix:
     try {
       const { channelCode, month, file } = req.params;
       // Sanitize: prevent path traversal
-      if (!/^[a-zA-Z0-9_]+$/.test(String(channelCode)) || !/^\d{4}-\d{2}$/.test(String(month)) || !/\.md$/.test(String(file))) {
+      if (!/^[a-zA-Z0-9_]+$/.test(String(channelCode)) || !/^\d{4}-\d{2}$/.test(String(month)) || !/^[a-zA-Z0-9_-]+\.md$/.test(String(file))) {
         return res.status(400).json({ code: -1, message: 'Invalid parameters' });
       }
       const filePath = path.join(getDataDir(), `channels/${channelCode}/handovers/${month}/${file}`);

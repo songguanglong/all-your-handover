@@ -28,6 +28,9 @@
         if (data.code === 0 && data.data) {
           currentUser = data.data;
           sessionStorage.setItem('h5_user', JSON.stringify(currentUser));
+          if (data.data.token) {
+            sessionStorage.setItem('h5_token', data.data.token);
+          }
           return;
         }
       } catch (err) {
@@ -38,6 +41,13 @@
     if (cached) {
       try { currentUser = JSON.parse(cached); } catch {}
     }
+  }
+
+  function authHeaders() {
+    var headers = { 'Content-Type': 'application/json' };
+    var token = sessionStorage.getItem('h5_token');
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    return headers;
   }
 
   function showError(msg) {
@@ -168,7 +178,7 @@
     try {
       var res = await fetch(`${API_BASE}/draft/${channelCode}/assign-shift`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ msgId: msgId, shift: shift }),
       });
       var data = await res.json();
@@ -416,13 +426,15 @@
     try {
       var res = await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ content: content }),
       });
       var data = await res.json();
       if (data.code === 0) {
         showSavedToast();
         document.getElementById('updateBanner').style.display = 'none';
+      } else if (data.code === -1 && res.status === 401) {
+        showError('认证已过期，请刷新页面重新登录');
       } else {
         showError(data.message || '保存失败');
       }
@@ -439,7 +451,7 @@
       try {
         var saveRes = await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders(),
           body: JSON.stringify({ content: content }),
         });
         var saveData = await saveRes.json();
@@ -514,7 +526,7 @@
         try {
           await fetch(`${API_BASE}/draft/${channelCode}/assign-shift`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders(),
             body: JSON.stringify({ msgId: item.msgId, shift: shift }),
           });
         } catch {}
@@ -539,7 +551,7 @@
     try {
       var res = await fetch(`${API_BASE}/handover/${channelCode}/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(body),
       });
       var data = await res.json();
@@ -566,7 +578,7 @@
     try {
       var res = await fetch(`${API_BASE}/handover/${channelCode}/accept`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(body),
       });
       var data = await res.json();
@@ -588,7 +600,7 @@
     try {
       var res = await fetch(`${API_BASE}/handover/${channelCode}/reject`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
       });
       var data = await res.json();
       if (data.code === 0) {

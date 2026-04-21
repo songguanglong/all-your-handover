@@ -100,8 +100,7 @@ export async function removeItemFromPreview(channelCode: string, msgId: string):
     const lines = preview.split('\n');
     const filteredLines = lines.filter(line => line.includes(`<!-- msg:${msgId} -->`));
     if (filteredLines.length === 0) {
-      releaseLock(p);
-      return; // Item not in preview
+      return; // Item not in preview — finally will release lock
     }
 
     // Remove lines containing this marker

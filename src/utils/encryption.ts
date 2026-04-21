@@ -4,13 +4,18 @@ import path from 'path';
 import os from 'os';
 
 const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
+const IV_LENGTH = 12;
+const MIN_KEY_LENGTH = 16;
 
 import { getDataDir } from './data-dir';
+import { logger } from './logger';
 
 async function deriveKey(): Promise<Buffer> {
   const envKey = process.env.ENCRYPTION_KEY;
   if (envKey) {
+    if (envKey.length < MIN_KEY_LENGTH) {
+      logger.warn(`ENCRYPTION_KEY 过短 (${envKey.length} 字符)，建议使用 ${MIN_KEY_LENGTH} 字符以上的密钥`);
+    }
     return crypto.createHash('sha256').update(envKey).digest();
   }
 
@@ -24,6 +29,7 @@ async function deriveKey(): Promise<Buffer> {
     const newKey = crypto.randomBytes(32);
     await fs.mkdir(path.dirname(keyPath), { recursive: true });
     await fs.writeFile(keyPath, newKey.toString('hex'), { mode: 0o600 });
+    logger.warn('未设置 ENCRYPTION_KEY 环境变量，已自动生成加密密钥。生产环境请设置 ENCRYPTION_KEY');
     return newKey;
   }
 }
@@ -31,7 +37,7 @@ async function deriveKey(): Promise<Buffer> {
 // Cache the derived key to avoid re-reading the file on every call
 let cachedKey: Buffer | null = null;
 
-async function getKey(): Promise<Buffer> {
+export async function getKey(): Promise<Buffer> {
   if (cachedKey) return cachedKey;
   cachedKey = await deriveKey();
   return cachedKey;
@@ -78,6 +84,9 @@ export async function decrypt(ciphertext: string): Promise<string> {
 export function encryptSync(plaintext: string): string {
   const envKey = process.env.ENCRYPTION_KEY;
   if (!envKey) throw new Error('ENCRYPTION_KEY env var required for sync encryption');
+  if (envKey.length < MIN_KEY_LENGTH) {
+    logger.warn(`ENCRYPTION_KEY 过短 (${envKey.length} 字符)`);
+  }
   const key = crypto.createHash('sha256').update(envKey).digest();
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);

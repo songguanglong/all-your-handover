@@ -1,6 +1,7 @@
 import type { Router, Request, Response } from 'express';
 import { loadChannelsConfig } from '../services/config-service';
 import { logger } from '../utils/logger';
+import { createSessionToken } from '../utils/session-token';
 
 interface FeishuUserInfo {
   open_id: string;
@@ -85,11 +86,14 @@ export function registerH5AuthRoutes(router: Router, prefix: string): void {
       return res.status(401).json({ code: -1, message: '飞书认证失败' });
     }
 
+    const sessionToken = await createSessionToken(userInfo.open_id, userInfo.name);
+
     res.json({
       code: 0,
       data: {
         open_id: userInfo.open_id,
         name: userInfo.name,
+        token: sessionToken,
       },
     });
   });

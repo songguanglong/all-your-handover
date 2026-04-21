@@ -36,20 +36,17 @@ export async function handleHandoverStart(
     logger.info(`交班完整性检查: ${check.missing} 条消息未分析 (共 ${check.totalRaw} 条)`);
   }
 
+  const requireAccept = channelConfig?.settings.requireAccept ?? true;
+
   // Snapshot: use preview.md content as handover body
   const handoverBody = preview;
 
-  if (channelConfig?.settings.requireAccept) {
-    // Mode A: need acceptance — save pending with snapshot
-    await savePending(channelCode, sender, handoverBody);
-    await addReaction(channel, chatId, '✅');
-    await channel.sendCard(chatId, buildHandoverCard(sender.name, handoverBody, true));
-  } else {
-    // Mode B: save as pending, sender can self-confirm via H5
-    await savePending(channelCode, sender, handoverBody);
-    await addReaction(channel, chatId, '✅');
-    await channel.sendCard(chatId, buildHandoverCard(sender.name, handoverBody, true));
-  }
+  // Both modes save as pending and send card with H5 link
+  // Mode A: requires a different person to accept via H5
+  // Mode B: allows the sender to self-confirm via H5
+  await savePending(channelCode, sender, handoverBody);
+  await addReaction(channel, chatId, '✅');
+  await channel.sendCard(chatId, buildHandoverCard(sender.name, handoverBody, requireAccept, channelCode));
 }
 
 /** Accept handover via H5 confirmation */
@@ -67,9 +64,16 @@ export async function handleHandoverAccept(
     return;
   }
 
-  if (!channelConfig?.settings.requireAccept) {
+  const senderInfo = rawPending.sender as { id: string; name: string } | undefined;
+
+  if (channelConfig?.settings.requireAccept) {
+    // Mode A: receiver must be different from sender
+    if (senderInfo && receiver.id === senderInfo.id) {
+      await channel.sendMessage(chatId, { type: 'text', text: '交班人不能自行确认接班，需由他人确认。' });
+      return;
+    }
+  } else {
     // Mode B: only the original sender can self-confirm
-    const senderInfo = rawPending?.sender as { id: string; name: string } | undefined;
     if (senderInfo && receiver.id !== senderInfo.id) {
       await channel.sendMessage(chatId, { type: 'text', text: '当前群允许交班人自行确认，无需他人确认。' });
       return;
@@ -83,7 +87,7 @@ export async function handleHandoverAccept(
   const filename = `${formatDate()}_${sender.id}_${receiver.id}.md`;
   const now = new Date().toISOString();
   const record = await buildHandoverRecord(channelCode, sender, receiver, finalBody, {
-    requireAccept: true,
+    requireAccept: channelConfig?.settings.requireAccept ?? true,
     createdAt: pending.createdAt as string,
     completedAt: now,
   });

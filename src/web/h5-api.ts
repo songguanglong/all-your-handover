@@ -13,6 +13,7 @@ import { llmProviderFactory } from '../llm/llm-provider-factory';
 import { logger } from '../utils/logger';
 import type { AnalysisItem } from '../types';
 import { onDraftUpdate, offDraftUpdate, notifyDraftUpdate } from './draft-events';
+import { h5RequireAuth } from './h5-session-auth';
 
 interface DraftResponse {
   preview: string | null;
@@ -39,6 +40,9 @@ interface HandoverRejectResponse {
   message: string;
 }
 
+const MAX_SSE_CONNECTIONS = 50;
+let activeSSEConnections = 0;
+
 export function registerH5Routes(router: Router, prefix: string): void {
   // SSE endpoint for real-time draft updates
   router.get(`${prefix}/draft/:code/events`, async (req: Request, res: Response) => {
@@ -46,6 +50,11 @@ export function registerH5Routes(router: Router, prefix: string): void {
     if (!/^[a-zA-Z0-9_]{1,50}$/.test(channelCode)) {
       return res.status(400).json({ code: -1, message: '无效的渠道代码' });
     }
+
+    if (activeSSEConnections >= MAX_SSE_CONNECTIONS) {
+      return res.status(429).json({ code: -1, message: '连接数已满，请稍后再试' });
+    }
+    activeSSEConnections++;
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -80,6 +89,7 @@ export function registerH5Routes(router: Router, prefix: string): void {
 
     // Cleanup on close
     req.on('close', () => {
+      activeSSEConnections--;
       offDraftUpdate(channelCode, handler);
       clearInterval(heartbeat);
     });
@@ -143,8 +153,8 @@ export function registerH5Routes(router: Router, prefix: string): void {
     }
   });
 
-  // Update preview.md (user edits)
-  router.put(`${prefix}/draft/:code/preview`, async (req: Request, res: Response) => {
+  // Update preview.md (user edits) — requires auth
+  router.put(`${prefix}/draft/:code/preview`, h5RequireAuth, async (req: Request, res: Response) => {
     try {
       const channelCode = req.params.code;
       const { content } = req.body;
@@ -226,8 +236,8 @@ export function registerH5Routes(router: Router, prefix: string): void {
     }
   });
 
-  // Start handover (snapshot)
-  router.post(`${prefix}/handover/:code/start`, async (req: Request, res: Response) => {
+  // Start handover (snapshot) — requires auth
+  router.post(`${prefix}/handover/:code/start`, h5RequireAuth, async (req: Request, res: Response) => {
     try {
       const channelCode = req.params.code;
       const { senderId, senderName } = req.body;
@@ -278,8 +288,8 @@ export function registerH5Routes(router: Router, prefix: string): void {
     }
   });
 
-  // Accept handover (confirm)
-  router.post(`${prefix}/handover/:code/accept`, async (req: Request, res: Response) => {
+  // Accept handover (confirm) — requires auth
+  router.post(`${prefix}/handover/:code/accept`, h5RequireAuth, async (req: Request, res: Response) => {
     try {
       const channelCode = req.params.code;
       const { receiverId, receiverName } = req.body;
@@ -310,8 +320,8 @@ export function registerH5Routes(router: Router, prefix: string): void {
     }
   });
 
-  // Reject handover (打回)
-  router.post(`${prefix}/handover/:code/reject`, async (req: Request, res: Response) => {
+  // Reject handover (打回) — requires auth
+  router.post(`${prefix}/handover/:code/reject`, h5RequireAuth, async (req: Request, res: Response) => {
     try {
       const channelCode = req.params.code;
       if (!/^[a-zA-Z0-9_]{1,50}$/.test(channelCode)) {
@@ -339,8 +349,8 @@ export function registerH5Routes(router: Router, prefix: string): void {
     }
   });
 
-  // Assign shift to a message item (纳入交接 / 归入下一班)
-  router.post(`${prefix}/draft/:code/assign-shift`, async (req: Request, res: Response) => {
+  // Assign shift to a message item (纳入交接 / 归入下一班) — requires auth
+  router.post(`${prefix}/draft/:code/assign-shift`, h5RequireAuth, async (req: Request, res: Response) => {
     try {
       const channelCode = req.params.code;
       const { msgId, shift } = req.body;

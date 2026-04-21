@@ -2,9 +2,13 @@ import express from 'express';
 import path from 'path';
 import http from 'http';
 import { registerWebhookRoutes } from './channels/webhook';
+import { securityHeaders } from './web/security-headers';
+import { rateLimit } from './web/rate-limit';
 import { registerAdminRoutes } from './web/admin';
+import { adminAuthMiddleware } from './web/admin-auth';
 import { registerH5Routes } from './web/h5-api';
 import { registerH5AuthRoutes } from './web/h5-auth';
+import { h5OptionalAuth } from './web/h5-session-auth';
 import { logger } from './utils/logger';
 
 declare global {
@@ -17,6 +21,12 @@ declare global {
 
 export async function startServer(port: number): Promise<http.Server> {
   const app = express();
+
+  // Security headers
+  app.use(securityHeaders);
+
+  // Rate limiting on API routes
+  app.use('/api', rateLimit());
 
   // Capture raw body for webhook signature verification before JSON parsing
   app.use(express.json({
@@ -35,10 +45,12 @@ export async function startServer(port: number): Promise<http.Server> {
   // Feishu Webhook
   registerWebhookRoutes(app);
 
-  // Admin API
+  // Admin API (protected by ADMIN_TOKEN)
+  app.use('/api/admin', adminAuthMiddleware);
   registerAdminRoutes(app);
 
-  // H5 API
+  // H5 API (optional auth attaches session; write routes enforce it)
+  app.use('/api/h5', h5OptionalAuth);
   registerH5Routes(app, '/api/h5');
   registerH5AuthRoutes(app, '/api/h5');
 

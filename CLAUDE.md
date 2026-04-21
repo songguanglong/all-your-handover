@@ -16,7 +16,7 @@ npm run lint         # ESLint on src/
 
 **CLI args:** `--port <number>` (default 3000 or PORT env), `--data <path>` (default ./data or DATA_DIR env), `uninstall` subcommand
 
-**Env vars:** `PORT`, `DATA_DIR`, `ENCRYPTION_KEY` (for config secret encryption; auto-generates if unset)
+**Env vars:** `PORT`, `DATA_DIR`, `ENCRYPTION_KEY` (for config secret encryption; auto-generates if unset), `ADMIN_TOKEN` (Bearer token for admin API; no auth if unset)
 
 ## Architecture
 
@@ -118,7 +118,12 @@ data/
 - **All user-facing strings are in Chinese** (log messages, command keywords, card content, API errors)
 - **channelCode** is the organizational key — partitions data dirs, LLM queues, and is regex-validated (`/^[a-zA-Z0-9_]{1,50}$/`)
 - **Use `getDataDir()`** from `src/utils/data-dir.ts` — never `process.env.DATA_DIR` directly (needed for test isolation)
-- **Admin route errors** use `sanitizeError()` helper — never leak stack traces
+- **Admin route errors** use `sanitizeError()` helper — returns generic 'Internal error', logs details server-side
+- **Admin API auth**: Protected by `ADMIN_TOKEN` Bearer auth middleware (`admin-auth.ts`). If `ADMIN_TOKEN` env var is unset, auth is skipped with a warning (dev mode). Production MUST set `ADMIN_TOKEN`.
+- **H5 API auth**: Read operations (GET draft, SSE, status) use `h5OptionalAuth` (attaches session if present). Write operations (PUT preview, POST handover/*, POST assign-shift) use `h5RequireAuth` (rejects 401 if no valid session). Session tokens issued by Feishu OAuth via `session-token.ts` (HMAC-signed, 24h expiry).
+- **Security middleware**: `securityHeaders` (X-Content-Type-Options, X-Frame-Options, etc.), `rateLimit` (60 req/min per IP on /api), SSE connection cap (50 concurrent)
+- **Config atomic writes**: `saveChannelsConfig`/`saveLLMProvidersConfig` use `atomicWriteFile` (write tmp → rename) to prevent corruption
+- **File lock timeout**: `acquireLock(key, timeoutMs=10000)` — deadlocks auto-expire after 10s
 - **Auto-commit wiring**: Services export `setAutoCommit(fn)`, App calls them in `initialize()`. No direct App import from services.
 - **LLM providers** must be OpenAI-compatible (`/chat/completions`). Add new providers by subclassing `BaseLLMProvider` and registering in `llm-provider-factory.ts` `providerClasses` map
 - **No HTTP client library** — raw `http`/`https` modules in `base-provider.ts` and `feishu-client.ts`

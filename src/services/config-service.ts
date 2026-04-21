@@ -1,7 +1,30 @@
 import fs from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 import type { ChannelsConfig, ChannelConfig, LLMProvidersConfig, LLMProviderConfig } from '../types';
 import { getDataDir } from '../utils/data-dir';
+import { logger } from '../utils/logger';
+
+async function atomicWriteFile(filePath: string, data: string): Promise<void> {
+  const dir = path.dirname(filePath);
+  const tmpFile = path.join(dir, `.tmp_${crypto.randomBytes(8).toString('hex')}`);
+  await fs.mkdir(dir, { recursive: true });
+  try {
+    await fs.writeFile(tmpFile, data);
+    await fs.rename(tmpFile, filePath);
+  } catch (err) {
+    try { await fs.unlink(tmpFile); } catch {}
+    throw err;
+  }
+}
+
+const CHANNEL_CODE_RE = /^[a-zA-Z0-9_]{1,50}$/;
+
+function validateChannelCode(channelCode: string): void {
+  if (!CHANNEL_CODE_RE.test(channelCode)) {
+    throw new Error(`Invalid channelCode: ${channelCode}`);
+  }
+}
 
 function channelsConfigPath(): string {
   return path.join(getDataDir(), 'config/channels.json');
@@ -49,15 +72,16 @@ export async function loadChannelsConfig(): Promise<ChannelsConfig> {
   try {
     const data = await fs.readFile(channelsConfigPath(), 'utf-8');
     return JSON.parse(data);
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      logger.error(`加载渠道配置失败: ${err instanceof Error ? err.message : err}`);
+    }
     return { platforms: {}, channels: [] };
   }
 }
 
 export async function saveChannelsConfig(config: ChannelsConfig): Promise<void> {
-  const p = channelsConfigPath();
-  await fs.mkdir(path.dirname(p), { recursive: true });
-  await fs.writeFile(p, JSON.stringify(config, null, 2));
+  await atomicWriteFile(channelsConfigPath(), JSON.stringify(config, null, 2));
 }
 
 export async function findChannelCodeByChatId(chatId: string): Promise<string | null> {
@@ -77,15 +101,16 @@ export async function loadLLMProvidersConfig(): Promise<LLMProvidersConfig> {
   try {
     const data = await fs.readFile(llmProvidersConfigPath(), 'utf-8');
     return JSON.parse(data);
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      logger.error(`加载LLM配置失败: ${err instanceof Error ? err.message : err}`);
+    }
     return { providers: [], defaultProviderId: null };
   }
 }
 
 export async function saveLLMProvidersConfig(config: LLMProvidersConfig): Promise<void> {
-  const p = llmProvidersConfigPath();
-  await fs.mkdir(path.dirname(p), { recursive: true });
-  await fs.writeFile(p, JSON.stringify(config, null, 2));
+  await atomicWriteFile(llmProvidersConfigPath(), JSON.stringify(config, null, 2));
 }
 
 export async function getDefaultProviderConfig(): Promise<LLMProviderConfig | null> {
@@ -97,6 +122,7 @@ export async function getDefaultProviderConfig(): Promise<LLMProviderConfig | nu
 // --- Template ---
 
 export async function getTemplate(channelCode: string): Promise<string> {
+  validateChannelCode(channelCode);
   const templatePath = path.join(getDataDir(), `channels/${channelCode}/template.md`);
   try {
     return await fs.readFile(templatePath, 'utf-8');
@@ -106,9 +132,9 @@ export async function getTemplate(channelCode: string): Promise<string> {
 }
 
 export async function saveTemplate(channelCode: string, content: string): Promise<void> {
+  validateChannelCode(channelCode);
   const templatePath = path.join(getDataDir(), `channels/${channelCode}/template.md`);
-  await fs.mkdir(path.dirname(templatePath), { recursive: true });
-  await fs.writeFile(templatePath, content);
+  await atomicWriteFile(templatePath, content);
 }
 
 export function getDefaultTemplate(): string {
@@ -118,6 +144,7 @@ export function getDefaultTemplate(): string {
 // --- System Prompt ---
 
 function systemPromptPath(channelCode: string): string {
+  validateChannelCode(channelCode);
   return path.join(getDataDir(), `channels/${channelCode}/system-prompt.txt`);
 }
 
@@ -130,9 +157,7 @@ export async function getSystemPrompt(channelCode: string): Promise<string> {
 }
 
 export async function saveSystemPrompt(channelCode: string, content: string): Promise<void> {
-  const p = systemPromptPath(channelCode);
-  await fs.mkdir(path.dirname(p), { recursive: true });
-  await fs.writeFile(p, content);
+  await atomicWriteFile(systemPromptPath(channelCode), content);
 }
 
 export function getDefaultSystemPrompt(): string {

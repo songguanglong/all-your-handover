@@ -1,20 +1,40 @@
 // In-process Mutex for concurrent draft writes
 // Single-process, no cross-process risk
 
-const lockMap: Map<string, Promise<void>> = new Map();
+import { logger } from './logger';
 
-export async function acquireLock(key: string): Promise<void> {
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+const lockMap: Map<string, Promise<void>> = new Map();
+const releaseMap: Map<string, () => void> = new Map();
+
+export async function acquireLock(key: string, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<void> {
   const prev = lockMap.get(key) || Promise.resolve();
   let resolve!: () => void;
   const next = new Promise<void>((r) => { resolve = r; });
   lockMap.set(key, next);
-  await prev;
-  // Lock is now held; caller must call releaseLock(key) when done
-  // We store the resolve so releaseLock can call it
+
+  // Wait for previous lock with timeout
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Lock acquisition timed out for key: ${key}`));
+    }, timeoutMs);
+  });
+
+  try {
+    await Promise.race([prev, timeout]);
+  } catch (err) {
+    // On timeout, clean up our entry from lockMap so we don't block future acquisitions
+    if (lockMap.get(key) === next) lockMap.delete(key);
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+
+  // Lock is now held; store resolve AFTER acquiring so releaseLock finds the right one
   releaseMap.set(key, resolve);
 }
-
-const releaseMap: Map<string, () => void> = new Map();
 
 export function releaseLock(key: string): void {
   const resolve = releaseMap.get(key);

@@ -1,3 +1,8 @@
+import { logger } from '../utils/logger';
+
 export function sanitizeError(err: unknown): string {
-  return err instanceof Error ? err.message : 'Internal error';
+  if (err instanceof Error) {
+    logger.error(`API error: ${err.message}`);
+  }
+  return 'Internal error';
 }
