@@ -237,6 +237,8 @@ export interface AnalysisItem {
   category: string;
   content: string;
   urgency: 'high' | 'normal' | 'low';
+  shift?: 'current' | 'next';    // 'next' = excluded from current handover
+  analyzedAt?: string;            // ISO timestamp when analyzed
 }
 
 export interface AnalysisFile {

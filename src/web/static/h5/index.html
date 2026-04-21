@@ -14,6 +14,7 @@
     .preview { background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; min-height: 200px; }
     .preview h1 { font-size: 18px; margin-bottom: 12px; }
     .preview h2 { font-size: 16px; margin-top: 16px; margin-bottom: 8px; color: #1a73e8; }
+    .preview h3 { font-size: 15px; margin-top: 12px; margin-bottom: 6px; color: #555; }
     .preview ul { padding-left: 20px; }
     .preview li { margin-bottom: 4px; line-height: 1.6; }
     .editor { width: 100%; min-height: 300px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; font-size: 14px; line-height: 1.6; font-family: inherit; resize: vertical; }
@@ -33,6 +34,59 @@
     .toolbar-left { display: flex; gap: 8px; }
     .toolbar button { padding: 6px 14px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; background: white; }
     .toolbar button.active { background: #1a73e8; color: white; border-color: #1a73e8; }
+
+    /* New message notification area */
+    .new-messages-area { margin-bottom: 16px; }
+    .new-messages-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; background: #e8f0fe; border-radius: 8px 8px 0 0;
+      font-size: 14px; font-weight: 600; color: #1a73e8; cursor: pointer;
+    }
+    .new-messages-header .badge {
+      background: #ea4335; color: white; border-radius: 10px;
+      padding: 2px 8px; font-size: 12px; margin-left: 6px;
+    }
+    .new-messages-header .arrow { font-size: 12px; transition: transform 0.2s; }
+    .new-messages-header .arrow.collapsed { transform: rotate(-90deg); }
+    .new-messages-body { border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 8px 8px; overflow: hidden; }
+    .new-messages-body.collapsed { display: none; }
+    .new-msg-item {
+      padding: 12px; border-bottom: 1px solid #f0f0f0; background: white;
+    }
+    .new-msg-item:last-child { border-bottom: none; }
+    .new-msg-sender { font-size: 13px; color: #666; margin-bottom: 4px; }
+    .new-msg-sender strong { color: #333; }
+    .new-msg-content { font-size: 14px; line-height: 1.5; margin-bottom: 4px; }
+    .new-msg-analysis { font-size: 12px; color: #888; margin-bottom: 8px; }
+    .new-msg-analysis .tag {
+      display: inline-block; padding: 1px 6px; border-radius: 3px;
+      font-size: 11px; margin-right: 4px;
+    }
+    .tag-category { background: #e8f0fe; color: #1a73e8; }
+    .tag-urgency-high { background: #fce8e6; color: #c5221f; }
+    .tag-urgency-normal { background: #fef7e0; color: #b45309; }
+    .tag-urgency-low { background: #e8f5e9; color: #1b5e20; }
+    .new-msg-actions { display: flex; gap: 8px; }
+    .new-msg-actions button {
+      flex: 1; padding: 8px; border: none; border-radius: 6px;
+      font-size: 13px; cursor: pointer; font-weight: 500;
+    }
+    .btn-include { background: #1a73e8; color: white; }
+    .btn-include:hover { background: #1557b0; }
+    .btn-exclude { background: #f1f3f4; color: #5f6368; }
+    .btn-exclude:hover { background: #e0e0e0; }
+
+    /* Update banner */
+    .update-banner {
+      background: #fff3cd; border-radius: 8px; padding: 10px 14px;
+      margin-bottom: 12px; font-size: 14px; display: flex;
+      align-items: center; justify-content: space-between;
+    }
+    .update-banner button {
+      background: #f59e0b; color: white; border: none; border-radius: 4px;
+      padding: 4px 12px; cursor: pointer; font-size: 13px;
+    }
+    .update-banner button:hover { background: #d97706; }
   </style>
 </head>
 <body>
@@ -43,6 +97,21 @@
     <div id="content" style="display:none">
       <div id="completeness" class="completeness" style="display:none"></div>
       <div id="savedToast" class="saved-toast" style="display:none">草稿已保存</div>
+
+      <!-- New message notifications -->
+      <div id="newMessagesArea" class="new-messages-area" style="display:none">
+        <div class="new-messages-header" onclick="toggleNewMessages()">
+          <span>📨 新消息 <span id="newMsgBadge" class="badge">0</span></span>
+          <span id="newMsgArrow" class="arrow">▼</span>
+        </div>
+        <div id="newMsgBody" class="new-messages-body"></div>
+      </div>
+
+      <!-- Update banner (shown in edit mode when preview changed on server) -->
+      <div id="updateBanner" class="update-banner" style="display:none">
+        <span id="updateBannerText">预览有新变更</span>
+        <button onclick="refreshFromServer()">刷新查看</button>
+      </div>
 
       <!-- Draft view -->
       <div id="draftView">
@@ -85,10 +154,17 @@
 
   <script>
     const API_BASE = '/api/h5';
+    const POLL_INTERVAL = 5000; // 5 seconds
+
     let channelCode = '';
     let editing = false;
     let currentUser = null;
     let toastTimer = null;
+    let knownMsgIds = new Set();  // msgIds we've already seen
+    let pendingNewItems = [];     // new items awaiting user decision
+    let assignedItems = new Set(); // msgIds already assigned to a shift
+    let pollTimer = null;
+    let lastAnalysisUpdate = '';   // timestamp of last analysis update
 
     function getChannelCode() {
       const params = new URLSearchParams(window.location.search);
@@ -134,6 +210,155 @@
       toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3000);
     }
 
+    function renderMarkdown(text) {
+      return text
+        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/\n{2,}/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+    }
+
+    function urgencyLabel(u) {
+      const map = { high: '紧急', normal: '一般', low: '低' };
+      return map[u] || '一般';
+    }
+
+    function urgencyTagClass(u) {
+      const map = { high: 'tag-urgency-high', normal: 'tag-urgency-normal', low: 'tag-urgency-low' };
+      return map[u] || 'tag-urgency-normal';
+    }
+
+    // Detect new items by comparing with known msgIds
+    function detectNewItems(items) {
+      const newItems = [];
+      for (const item of items) {
+        if (!knownMsgIds.has(item.msgId) && !assignedItems.has(item.msgId) && item.shift !== 'next') {
+          newItems.push(item);
+        }
+      }
+      return newItems;
+    }
+
+    // Render the new message notification area
+    function renderNewMessages() {
+      const area = document.getElementById('newMessagesArea');
+      const body = document.getElementById('newMsgBody');
+      const badge = document.getElementById('newMsgBadge');
+
+      if (pendingNewItems.length === 0) {
+        area.style.display = 'none';
+        return;
+      }
+
+      area.style.display = 'block';
+      badge.textContent = pendingNewItems.length;
+
+      body.innerHTML = pendingNewItems.map((item, idx) => `
+        <div class="new-msg-item" id="newMsg-${item.msgId}">
+          <div class="new-msg-sender">新消息</div>
+          <div class="new-msg-content">${escapeHtml(item.content)}</div>
+          <div class="new-msg-analysis">
+            <span class="tag tag-category">${escapeHtml(item.category)}</span>
+            <span class="tag ${urgencyTagClass(item.urgency)}">${urgencyLabel(item.urgency)}</span>
+          </div>
+          <div class="new-msg-actions">
+            <button class="btn-include" onclick="assignShift('${item.msgId}', 'current', ${idx})">纳入交接 ✓</button>
+            <button class="btn-exclude" onclick="assignShift('${item.msgId}', 'next', ${idx})">归入下一班 →</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function toggleNewMessages() {
+      const body = document.getElementById('newMsgBody');
+      const arrow = document.getElementById('newMsgArrow');
+      if (body.classList.contains('collapsed')) {
+        body.classList.remove('collapsed');
+        arrow.classList.remove('collapsed');
+      } else {
+        body.classList.add('collapsed');
+        arrow.classList.add('collapsed');
+      }
+    }
+
+    async function assignShift(msgId, shift, idx) {
+      try {
+        const res = await fetch(`${API_BASE}/draft/${channelCode}/assign-shift`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ msgId, shift }),
+        });
+        const data = await res.json();
+        if (data.code === 0) {
+          // Remove from pending list
+          pendingNewItems.splice(idx, 1);
+          assignedItems.add(msgId);
+          knownMsgIds.add(msgId);
+          renderNewMessages();
+          // Refresh preview
+          await refreshFromServer();
+        } else {
+          showError(data.message || '操作失败');
+        }
+      } catch (err) {
+        showError('网络错误');
+      }
+    }
+
+    async function refreshFromServer() {
+      hideError();
+      try {
+        const res = await fetch(`${API_BASE}/draft/${channelCode}`);
+        const data = await res.json();
+        if (data.code !== 0) {
+          showError(data.message || '刷新失败');
+          return;
+        }
+
+        const d = data.data;
+
+        // Update completeness
+        const compEl = document.getElementById('completeness');
+        if (d.missingCount > 0) {
+          compEl.textContent = `还有 ${d.missingCount} 条消息未分析（共 ${d.rawCount} 条）`;
+          compEl.className = 'completeness';
+        } else {
+          compEl.textContent = `全部 ${d.rawCount} 条消息已分析`;
+          compEl.className = 'completeness ok';
+        }
+        compEl.style.display = 'block';
+
+        // Update preview (only in view mode)
+        if (!editing) {
+          document.getElementById('previewDisplay').innerHTML = renderMarkdown(d.preview || '暂无内容');
+          document.getElementById('editorArea').value = d.preview || '';
+        }
+
+        // Update known items
+        const currentItems = d.items || [];
+        for (const item of currentItems) {
+          knownMsgIds.add(item.msgId);
+        }
+        lastAnalysisUpdate = d.lastUpdated || '';
+
+        // Hide update banner since we just refreshed
+        document.getElementById('updateBanner').style.display = 'none';
+
+        // Check for pending handover state
+        await checkPendingState();
+      } catch (err) {
+        showError('刷新失败');
+      }
+    }
+
     async function loadDraft() {
       hideError();
       try {
@@ -148,33 +373,123 @@
         document.getElementById('status').style.display = 'none';
         document.getElementById('content').style.display = 'block';
 
+        // Completeness
         const compEl = document.getElementById('completeness');
         if (d.missingCount > 0) {
           compEl.textContent = `还有 ${d.missingCount} 条消息未分析（共 ${d.rawCount} 条）`;
           compEl.className = 'completeness';
-          compEl.style.display = 'block';
         } else {
           compEl.textContent = `全部 ${d.rawCount} 条消息已分析`;
           compEl.className = 'completeness ok';
-          compEl.style.display = 'block';
         }
+        compEl.style.display = 'block';
 
-        const previewEl = document.getElementById('previewDisplay');
-        previewEl.innerHTML = renderMarkdown(d.preview || '暂无内容');
+        // Preview
+        document.getElementById('previewDisplay').innerHTML = renderMarkdown(d.preview || '暂无内容');
         document.getElementById('editorArea').value = d.preview || '';
+
+        // Track known items
+        const items = d.items || [];
+        for (const item of items) {
+          knownMsgIds.add(item.msgId);
+          if (item.shift === 'next') {
+            assignedItems.add(item.msgId);
+          }
+        }
+        lastAnalysisUpdate = d.lastUpdated || '';
+
+        // Check if there's a pending handover
+        await checkPendingState();
+
+        // Start polling for new messages
+        startPolling();
       } catch (err) {
         showError('网络错误，请重试');
       }
     }
 
-    function renderMarkdown(text) {
-      return text
-        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-        .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/\n{2,}/g, '</p><p>')
-        .replace(/\n/g, '<br>');
+    async function checkPendingState() {
+      try {
+        // Try to get pending handover info
+        const res = await fetch(`${API_BASE}/handover/${channelCode}/pending`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.code === 0 && data.data) {
+            // There's a pending handover — show pending view
+            showPendingView(data.data);
+            return;
+          }
+        }
+        // No pending — show draft view
+        document.getElementById('draftView').style.display = 'block';
+        document.getElementById('pendingView').style.display = 'none';
+      } catch {
+        document.getElementById('draftView').style.display = 'block';
+        document.getElementById('pendingView').style.display = 'none';
+      }
+    }
+
+    function showPendingView(pending) {
+      document.getElementById('draftView').style.display = 'none';
+      document.getElementById('pendingView').style.display = 'block';
+      document.getElementById('senderInfo').textContent = `交班人: ${pending.sender?.name || '未知'}`;
+      document.getElementById('createdAtInfo').textContent = `时间: ${pending.createdAt || ''}`;
+      document.getElementById('pendingPreview').innerHTML = renderMarkdown(pending.content || '');
+    }
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollForUpdates, POLL_INTERVAL);
+    }
+
+    async function pollForUpdates() {
+      try {
+        const res = await fetch(`${API_BASE}/draft/${channelCode}`);
+        const data = await res.json();
+        if (data.code !== 0) return;
+
+        const d = data.data;
+        const items = d.items || [];
+
+        // Detect new items
+        const newItems = detectNewItems(items);
+        if (newItems.length > 0) {
+          // Add to pending notifications
+          pendingNewItems = pendingNewItems.concat(newItems);
+          renderNewMessages();
+
+          // If in view mode, auto-refresh preview
+          if (!editing) {
+            document.getElementById('previewDisplay').innerHTML = renderMarkdown(d.preview || '暂无内容');
+            document.getElementById('editorArea').value = d.preview || '';
+          } else {
+            // In edit mode, show update banner
+            const banner = document.getElementById('updateBanner');
+            banner.style.display = 'flex';
+            document.getElementById('updateBannerText').textContent =
+              `有 ${newItems.length} 条新消息已分析完成`;
+          }
+
+          // Add all new items to known set
+          for (const item of items) {
+            knownMsgIds.add(item.msgId);
+          }
+        }
+
+        // Update completeness
+        const compEl = document.getElementById('completeness');
+        if (d.missingCount > 0) {
+          compEl.textContent = `还有 ${d.missingCount} 条消息未分析（共 ${d.rawCount} 条）`;
+          compEl.className = 'completeness';
+        } else {
+          compEl.textContent = `全部 ${d.rawCount} 条消息已分析`;
+          compEl.className = 'completeness ok';
+        }
+
+        lastAnalysisUpdate = d.lastUpdated || '';
+      } catch {
+        // Silent fail on poll errors
+      }
     }
 
     function switchToView() {
@@ -183,6 +498,10 @@
       document.getElementById('previewEditor').style.display = 'none';
       document.getElementById('viewBtn').classList.add('active');
       document.getElementById('editBtn').classList.remove('active');
+      // Hide update banner when switching to view
+      document.getElementById('updateBanner').style.display = 'none';
+      // Refresh preview from server
+      refreshFromServer();
     }
 
     function switchToEdit() {
@@ -197,12 +516,10 @@
     async function saveDraft() {
       const content = editing
         ? document.getElementById('editorArea').value
-        : undefined;  // In view mode, nothing to save (no edits)
+        : undefined;
 
-      if (!content && editing) return;
-
-      // If in view mode and no editor changes, nothing to save
       if (!editing) return;
+      if (!content && editing) return;
 
       try {
         const res = await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
@@ -213,7 +530,8 @@
         const data = await res.json();
         if (data.code === 0) {
           showSavedToast();
-          // Stay in edit mode so user can keep editing
+          // Hide update banner after save
+          document.getElementById('updateBanner').style.display = 'none';
         } else {
           showError(data.message || '保存失败');
         }
@@ -235,7 +553,26 @@
         } catch {}
       }
 
+      // Check for unassigned new messages
+      if (pendingNewItems.length > 0) {
+        const confirmMsg = `还有 ${pendingNewItems.length} 条新消息未归属班次，确认交班将全部纳入当前交接。是否继续？`;
+        if (!confirm(confirmMsg)) return;
+        // Auto-assign all pending new items to current shift
+        for (const item of pendingNewItems) {
+          try {
+            await fetch(`${API_BASE}/draft/${channelCode}/assign-shift`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ msgId: item.msgId, shift: 'current' }),
+            });
+          } catch {}
+        }
+        pendingNewItems = [];
+        renderNewMessages();
+      }
+
       if (!confirm('确认发起交班？')) return;
+
       const body = {};
       if (currentUser) {
         body.senderId = currentUser.open_id;
@@ -250,6 +587,7 @@
         const data = await res.json();
         if (data.code === 0) {
           alert('交班已发起');
+          if (pollTimer) clearInterval(pollTimer);
           location.reload();
         } else {
           showError(data.message || data.data?.message || '交班失败');
@@ -275,6 +613,7 @@
         const data = await res.json();
         if (data.code === 0) {
           alert('接班确认成功');
+          if (pollTimer) clearInterval(pollTimer);
           location.reload();
         } else {
           showError(data.message || data.data?.message || '接班确认失败');
@@ -294,6 +633,7 @@
         const data = await res.json();
         if (data.code === 0) {
           alert('已打回');
+          if (pollTimer) clearInterval(pollTimer);
           location.reload();
         } else {
           showError(data.message || '打回失败');
@@ -310,6 +650,11 @@
     } else {
       authenticate().then(() => loadDraft());
     }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (pollTimer) clearInterval(pollTimer);
+    });
   </script>
 </body>
 </html>

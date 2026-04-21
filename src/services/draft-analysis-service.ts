@@ -54,6 +54,15 @@ export async function updateAnalysis(channelCode: string, item: AnalysisItem): P
       file = emptyAnalysis();
     }
 
+    // Preserve analyzedAt if not provided
+    if (!item.analyzedAt) {
+      item.analyzedAt = new Date().toISOString();
+    }
+    // Default shift to 'current'
+    if (!item.shift) {
+      item.shift = 'current';
+    }
+
     const idx = file.items.findIndex(i => i.msgId === item.msgId);
     if (idx >= 0) {
       file.items[idx] = item;
@@ -64,6 +73,31 @@ export async function updateAnalysis(channelCode: string, item: AnalysisItem): P
     file.messageCount = file.items.length;
 
     await fs.writeFile(p, JSON.stringify(file, null, 2), 'utf-8');
+  } finally {
+    releaseLock(p);
+  }
+  await autoCommit();
+}
+
+/** Mark an analysis item's shift assignment (current or next) */
+export async function markItemShift(channelCode: string, msgId: string, shift: 'current' | 'next'): Promise<void> {
+  const p = analysisPath(channelCode);
+  await acquireLock(p);
+  try {
+    let file: AnalysisFile;
+    try {
+      const data = await fs.readFile(p, 'utf-8');
+      file = JSON.parse(data) as AnalysisFile;
+    } catch {
+      file = emptyAnalysis();
+    }
+
+    const idx = file.items.findIndex(i => i.msgId === msgId);
+    if (idx >= 0) {
+      file.items[idx].shift = shift;
+      file.lastUpdated = new Date().toISOString();
+      await fs.writeFile(p, JSON.stringify(file, null, 2), 'utf-8');
+    }
   } finally {
     releaseLock(p);
   }

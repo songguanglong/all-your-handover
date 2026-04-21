@@ -1,7 +1,7 @@
 import type { Router, Request, Response } from 'express';
-import { readPreview, updatePreview } from '../services/draft-preview-service';
+import { readPreview, updatePreview, removeItemFromPreview } from '../services/draft-preview-service';
 import { readRawRecords } from '../services/draft-raw-service';
-import { readAnalysis, completenessCheck } from '../services/draft-analysis-service';
+import { readAnalysis, completenessCheck, markItemShift } from '../services/draft-analysis-service';
 import { handleHandoverStart, handleHandoverAccept, handleHandoverReject } from '../services/handover-orchestrator';
 import { findPendingHandover, removePendingHandover } from '../services/handover-service';
 import { getChannelConfig } from '../services/config-service';
@@ -18,7 +18,8 @@ interface DraftResponse {
   rawCount: number;
   analyzedCount: number;
   missingCount: number;
-  items: Array<{ msgId: string; category: string; content: string; urgency: string }>;
+  items: AnalysisItem[];
+  lastUpdated: string;
 }
 
 interface HandoverStartResponse {
@@ -59,6 +60,7 @@ export function registerH5Routes(router: Router, prefix: string): void {
         analyzedCount: check.totalAnalyzed,
         missingCount: check.missing,
         items: analysis.items,
+        lastUpdated: analysis.lastUpdated,
       };
 
       res.json({ code: 0, data: response });
@@ -258,6 +260,53 @@ export function registerH5Routes(router: Router, prefix: string): void {
       res.json({ code: 0, data: { success: true, message: '已打回，交班人可重新编辑' } as HandoverRejectResponse });
     } catch (err) {
       res.status(500).json({ code: -1, message: '打回操作失败' });
+    }
+  });
+
+  // Assign shift to a message item (纳入交接 / 归入下一班)
+  router.post(`${prefix}/draft/:code/assign-shift`, async (req: Request, res: Response) => {
+    try {
+      const channelCode = req.params.code;
+      const { msgId, shift } = req.body;
+      if (!/^[a-zA-Z0-9_]{1,50}$/.test(channelCode)) {
+        return res.status(400).json({ code: -1, message: '无效的渠道代码' });
+      }
+      if (!msgId || typeof msgId !== 'string') {
+        return res.status(400).json({ code: -1, message: '缺少msgId参数' });
+      }
+      if (shift !== 'current' && shift !== 'next') {
+        return res.status(400).json({ code: -1, message: 'shift必须是current或next' });
+      }
+
+      await markItemShift(channelCode, msgId, shift);
+
+      if (shift === 'next') {
+        // Remove from preview.md
+        await removeItemFromPreview(channelCode, msgId);
+      }
+
+      res.json({ code: 0, message: shift === 'current' ? '已纳入当前交接' : '已归入下一班' });
+    } catch (err) {
+      res.status(500).json({ code: -1, message: '操作失败' });
+    }
+  });
+
+  // Check pending handover state
+  router.get(`${prefix}/handover/:code/pending`, async (req: Request, res: Response) => {
+    try {
+      const channelCode = req.params.code;
+      if (!/^[a-zA-Z0-9_]{1,50}$/.test(channelCode)) {
+        return res.status(400).json({ code: -1, message: '无效的渠道代码' });
+      }
+
+      const pending = await findPendingHandover(channelCode);
+      if (!pending) {
+        return res.json({ code: 0, data: null });
+      }
+
+      res.json({ code: 0, data: pending });
+    } catch (err) {
+      res.status(500).json({ code: -1, message: '查询失败' });
     }
   });
 }
