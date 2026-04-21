@@ -1,7 +1,7 @@
 # All Your Handover - 产品设计文档
 
-> **版本**：v2.0
-> **日期**：2026-04-20
+> **版本**：v2.1
+> **日期**：2026-04-21
 > **状态**：已实现核心功能
 > **项目名**：All Your Handover
 > **仓库/包名**：all-your-handover
@@ -280,7 +280,6 @@ data/
 │   └── qiantai/               # code: "qiantai"
 │       ├── template.md         # 交接模版
 │       ├── system-prompt.txt   # 系统提示词
-│       ├── agent-soul.json     # Agent 灵魂设定
 │       ├── soul.md             # 灵魂人设定义
 │       ├── agents.md           # 行为规则
 │       ├── experience.json     # 经验规则
@@ -361,7 +360,7 @@ data/
   "messageCount": 2,
   "items": [
     { "msgId": "msg_xxx", "category": "待办事项", "content": "302客人需要加床", "urgency": "high" },
-    { "msgId": "msg_yyy", "category": "特殊事项", "content": "VIP客人信息", "urgency": "normal" }
+    { "msgId": "msg_yyy", "category": "客户", "content": "VIP客人信息", "urgency": "normal" }
   ]
 }
 ```
@@ -374,7 +373,7 @@ data/
 
 - 302客人需要加床 (紧急) <!-- msg:msg_xxx -->
 
-## 特殊事项
+## 客户
 
 - VIP客人信息 (一般) <!-- msg:msg_yyy -->
 ```
@@ -384,7 +383,7 @@ data/
 {
   "items": [
     { "msgId": "msg_xxx", "category": "待办事项", "content": "302客人需要加床", "urgency": "high" },
-    { "msgId": "msg_yyy", "category": "特殊事项", "content": "VIP客人信息", "urgency": "normal" }
+    { "msgId": "msg_yyy", "category": "客户", "content": "VIP客人信息", "urgency": "normal" }
   ]
 }
 ```
@@ -395,22 +394,22 @@ data/
 
 ### 4.8 Agent 智能数据
 
-**agent-soul.json** — Agent 灵魂设定
-```json
-{
-  "persona": "你是一位专业的酒店前台交班助手",
-  "scenario": "hotel_front_desk",
-  "constraints": [
-    "严格遵守酒店信息保密规定",
-    "不猜测不确定的信息"
-  ],
-  "tone": "专业、简洁、准确"
-}
+**soul.md** — 灵魂人设（Markdown 格式，定义 Agent 的人格、语气、边界）
+```markdown
+# 交班助手人格
+
+## 我是谁
+交班助手。记录、整理、交接。不是管理者，不是决策者。
+
+## 我怎么说话
+- 准确 > 华丽
+- 该紧急就紧急，该平淡就平淡
+
+## 我的边界
+- 只处理与本班交接相关的内容
+- 不对人员做评价
 ```
 
-内置模板：hotel（酒店前台）、factory（工厂交接）、hospital（医院交接）、custom（自定义）
-
-**soul.md** — 灵魂人设（Markdown，与 agent-soul.json 并行）
 **agents.md** — 行为规则（默认：优先级判断、组织规范、禁忌）
 
 **experience.json** — 经验规则
@@ -494,15 +493,17 @@ GET /api/h5/auth/feishu?code=xxx   飞书 JS-SDK OAuth（auth_code 换用户信�
 
 **草稿**：
 ```
-GET /api/h5/draft/:code            获取草稿数据（preview + raw count + analysis items）
+GET /api/h5/draft/:code            获取草稿数据（preview + raw count + analysis items + lastUpdated）
 PUT /api/h5/draft/:code/preview    保存预览编辑（触发 diff 检测 + 经验学习）
+POST /api/h5/draft/:code/assign-shift  归属班次（纳入交接/归入下一班）
 ```
 
 **交接**：
 ```
-POST /api/h5/handover/:code/start   发起交班
-POST /api/h5/handover/:code/accept  确认接班（requireAccept=false 时仅允许交班人自行确认）
-POST /api/h5/handover/:code/reject  打回交接
+GET /api/h5/handover/:code/pending  查询待交接状态
+POST /api/h5/handover/:code/start  发起交班
+POST /api/h5/handover/:code/accept 确认接班
+POST /api/h5/handover/:code/reject 打回交接
 ```
 
 **PUT preview 触发的自进化流程**：
@@ -549,9 +550,9 @@ interface GenerateHandoverParams {
 }
 
 type ThinkingMode = 'quick' | 'standard' | 'deep';
-// quick: 低温度(0.3), 1024 tokens
-// standard: 中温度(0.7), 2048 tokens
-// deep: 高温度(0.5), 4096 tokens（用于 generateHandover）
+// quick: 低温度(0.3), 512 tokens — 用于消息分析
+// standard: 中温度(0.7), 无限制 — 默认
+// deep: 高温度(0.8), 4096 tokens — 用于复盘
 ```
 
 ### 6.2 Provider 工厂 + 模型路由
@@ -629,15 +630,17 @@ GET    /api/admin/logs                    最近日志
 
 **Agent 管理**：
 ```
-GET    /api/admin/channels/:code/agent/soul          获取灵魂设定
-PUT    /api/admin/channels/:code/agent/soul          更新灵魂设定
+GET    /api/admin/channels/:code/agent/soul          获取灵魂设定（Markdown）
+PUT    /api/admin/channels/:code/agent/soul          更新灵魂设定（Markdown content）
 PUT    /api/admin/channels/:code/agent/soul/reset   重置灵魂设定
-GET    /api/admin/channels/:code/agent/soul/templates  列出内置模板
+GET    /api/admin/channels/:code/agent/agents        获取行为规则（Markdown）
+PUT    /api/admin/channels/:code/agent/agents        更新行为规则（Markdown content）
+PUT    /api/admin/channels/:code/agent/agents/reset  重置行为规则
 GET    /api/admin/channels/:code/agent/experience    列出经验规则
 DELETE /api/admin/channels/:code/agent/experience/:id  删除经验规则
-GET    /api/admin/channels/:code/agent/dream-config  获取梦境配置
-PUT    /api/admin/channels/:code/agent/dream-config  更新梦境配置
-POST   /api/admin/channels/:code/agent/dream/trigger  手动触发梦境
+GET    /api/admin/channels/:code/agent/dream-config  获取反思配置
+PUT    /api/admin/channels/:code/agent/dream-config  更新反思配置
+POST   /api/admin/channels/:code/agent/dream/trigger  手动触发反思
 ```
 
 ---
@@ -668,13 +671,12 @@ LLM 分析消息时:
 
 ### 7.2 灵魂设定（Soul）
 
-每个渠道可配置独立的 Agent 灵魂：
-- **persona**：人设描述（如"专业的酒店前台交班助手"）
-- **scenario**：场景（hotel_front_desk / factory_shift / hospital_shift / custom）
-- **constraints**：约束列表（如"不猜测不确定的信息"）
-- **tone**：语气（专业、简洁、准确）
+每个渠道可配置独立的 Agent 灵魂，使用 Markdown 格式（soul.md）：
+- **我是谁**：人设描述（如"交班助手。记录、整理、交接。"）
+- **我怎么说话**：语气风格（如"准确 > 华丽"）
+- **我的边界**：行为边界（如"只处理与本班交接相关的内容"）
 
-内置模板：hotel、factory、hospital、custom
+后台管理界面提供 Markdown 编辑器，可直接编辑 soul.md 内容。
 
 ### 7.3 行为规则（Agents）
 
@@ -786,12 +788,6 @@ npm run pkg   # 生成平台特定可执行文件
 - [ ] Git 历史可视化
 - [ ] 更多 LLM Provider（Anthropic、智谱、通义千问）
 
-### Phase 3
-
-- [ ] 可视化模版编辑器（拖拽式）
-- [ ] 移动端优化
-- [ ] Open API
-
 ---
 
 ## 十一、已确认决策
@@ -823,6 +819,7 @@ npm run pkg   # 生成平台特定可执行文件
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v2.1 | 2026-04-21 | 审计修复：废弃 JSON soul 统一到 markdown、删 Dream 定时器死代码、分类与模版对齐、分析 prompt 补分类列表、H5 班次归属、路由回退日志、candidates TTL |
 | v2.0 | 2026-04-20 | 全量更新：Agent 智能系统、H5 移动端、记忆闭环、模型路由、草稿架构重构、交接流程更新 |
 | v1.8 | 2026-04-18 | 上下文注入、系统提示词编辑器、去除鉴权、文档同步 |
 | v1.7 | 2026-04-17 | 上下文服务（上一班交接记录注入） |

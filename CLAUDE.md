@@ -96,8 +96,7 @@ data/
       preview-items.json    # Parallel structured item tracking (survives user edits)
       pending.json          # Pending handover state
     handovers/YYYY-MM/*.md  # Completed handover records (YAML frontmatter + Markdown)
-    agent-soul.json         # Agent soul config (persona, scenario, constraints, tone)
-    soul.md                 # Soul persona definition
+    soul.md                 # Soul persona definition (Markdown, replaces former agent-soul.json)
     agents.md               # Agent behavioral rules
     experience.json         # Learned experience rules
     channel-memory.md       # Channel memory (纠错记录, 禁忌, etc.)
