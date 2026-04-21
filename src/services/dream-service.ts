@@ -22,7 +22,7 @@ function reviewsDir(channelCode: string): string {
   return path.join(getDataDir(), `channels/${channelCode}/dreaming/reviews`);
 }
 
-const DEFAULT_DREAM_CONFIG: DreamConfig = { enabled: true, cronHour: 3 };
+const DEFAULT_DREAM_CONFIG: DreamConfig = { enabled: true };
 
 export async function getDreamConfig(channelCode: string): Promise<DreamConfig> {
   try {
@@ -181,14 +181,3 @@ ${candidates.map(c => `- [${c.confidence >= 0.8 ? '已写入' : '待审'}] (${c.
   await autoCommit();
 }
 
-// Legacy compatibility — no longer used by scheduler
-export async function shouldRunDream(_channelCode: string): Promise<boolean> {
-  return false;
-}
-
-export async function runDream(
-  channelCode: string,
-  chatCompletion: (messages: Array<{ role: string; content: string }>) => Promise<string>
-): Promise<DreamReport | null> {
-  return runPostHandoverDream(channelCode, 0.5, chatCompletion);
-}

@@ -21,16 +21,14 @@ describe('Dream Service', () => {
     it('returns default config when none saved', async () => {
       const config = await getDreamConfig('test');
       expect(config.enabled).toBe(true);
-      expect(config.cronHour).toBe(3);
     });
   });
 
   describe('saveDreamConfig + getDreamConfig', () => {
     it('saves and retrieves config', async () => {
-      await saveDreamConfig('test', { enabled: false, cronHour: 5 });
+      await saveDreamConfig('test', { enabled: false });
       const config = await getDreamConfig('test');
       expect(config.enabled).toBe(false);
-      expect(config.cronHour).toBe(5);
     });
   });
 

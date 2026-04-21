@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs/promises';
 import path from 'path';
-import { getSoul, saveSoul, resetSoul, getTemplates, buildSoulPrompt } from '../src/services/agent-soul-service';
+import { getSoul, saveSoul, getDefaultSoul, buildSoulPrompt } from '../src/services/soul-service';
+import { getAgents, saveAgents, getDefaultAgents } from '../src/services/agents-service';
 
 const TMP_DIR = path.join(__dirname, '__tmp_soul_test');
 
@@ -15,87 +16,65 @@ afterEach(async () => {
   await fs.rm(TMP_DIR, { recursive: true, force: true });
 });
 
-describe('Agent Soul Service', () => {
+describe('Soul Service (markdown)', () => {
   describe('getSoul', () => {
     it('returns default soul when none saved', async () => {
       const soul = await getSoul('test');
-      expect(soul.persona).toBe('你是一位交接班助手');
-      expect(soul.scenario).toBe('custom');
-      expect(soul.constraints).toEqual([]);
+      expect(soul).toContain('交班助手人格');
     });
   });
 
   describe('saveSoul + getSoul', () => {
-    it('saves and retrieves soul', async () => {
-      const soul = {
-        persona: '你是一位专业的酒店前台交接班助手',
-        scenario: 'hotel',
-        constraints: ['关注客房状态'],
-        tone: '专业',
-      };
-      await saveSoul('test', soul);
+    it('saves and retrieves soul markdown', async () => {
+      const content = '# 测试人格\n\n我是测试助手。';
+      await saveSoul('test', content);
       const loaded = await getSoul('test');
-      expect(loaded.persona).toBe(soul.persona);
-      expect(loaded.scenario).toBe('hotel');
-      expect(loaded.constraints).toEqual(['关注客房状态']);
-      expect(loaded.tone).toBe('专业');
+      expect(loaded).toBe(content);
     });
   });
 
-  describe('resetSoul', () => {
-    it('resets to default', async () => {
-      await saveSoul('test', { persona: 'custom', constraints: ['a'], scenario: 'hotel' });
-      await resetSoul('test');
-      const soul = await getSoul('test');
-      expect(soul.persona).toBe('你是一位交接班助手');
-      expect(soul.scenario).toBe('custom');
-    });
-  });
-
-  describe('getTemplates', () => {
-    it('returns builtin templates', () => {
-      const templates = getTemplates();
-      expect(templates.length).toBeGreaterThanOrEqual(3);
-      expect(templates.find(t => t.id === 'hotel')).toBeTruthy();
-      expect(templates.find(t => t.id === 'factory')).toBeTruthy();
-      expect(templates.find(t => t.id === 'hospital')).toBeTruthy();
-      expect(templates.find(t => t.id === 'custom')).toBeTruthy();
+  describe('getDefaultSoul', () => {
+    it('returns default soul markdown', () => {
+      const defaultSoul = getDefaultSoul();
+      expect(defaultSoul).toContain('交班助手人格');
     });
   });
 
   describe('buildSoulPrompt', () => {
-    it('builds prompt with all fields', () => {
-      const prompt = buildSoulPrompt({
-        persona: '酒店前台助手',
-        scenario: 'hotel',
-        constraints: ['关注客房', '关注宾客'],
-        tone: '专业',
-      });
-      expect(prompt).toContain('【Agent 人设】');
-      expect(prompt).toContain('角色：酒店前台助手');
-      expect(prompt).toContain('语气：专业');
-      expect(prompt).toContain('- 关注客房');
-      expect(prompt).toContain('- 关注宾客');
+    it('builds prompt with soul only', () => {
+      const prompt = buildSoulPrompt('# 我的人格\n\n我是助手。');
+      expect(prompt).toContain('我是助手。');
     });
 
-    it('omits tone and constraints when empty', () => {
-      const prompt = buildSoulPrompt({
-        persona: '助手',
-        scenario: 'custom',
-        constraints: [],
-      });
-      expect(prompt).not.toContain('语气');
-      expect(prompt).not.toContain('行为约束');
+    it('builds prompt with soul + agents', () => {
+      const prompt = buildSoulPrompt('# 我的人格\n\n我是助手。', '# 行为守则\n\n- 规则1');
+      expect(prompt).toContain('我是助手。');
+      expect(prompt).toContain('规则1');
     });
+  });
+});
 
-    it('includes custom scenario description', () => {
-      const prompt = buildSoulPrompt({
-        persona: '助手',
-        scenario: 'custom',
-        constraints: [],
-        customScenario: '适用于物流中心交接',
-      });
-      expect(prompt).toContain('场景说明：适用于物流中心交接');
+describe('Agents Service (markdown)', () => {
+  describe('getAgents', () => {
+    it('returns default agents when none saved', async () => {
+      const agents = await getAgents('test');
+      expect(agents).toContain('行为守则');
+    });
+  });
+
+  describe('saveAgents + getAgents', () => {
+    it('saves and retrieves agents markdown', async () => {
+      const content = '# 行为守则\n\n- 测试规则';
+      await saveAgents('test', content);
+      const loaded = await getAgents('test');
+      expect(loaded).toBe(content);
+    });
+  });
+
+  describe('getDefaultAgents', () => {
+    it('returns default agents markdown', () => {
+      const defaultAgents = getDefaultAgents();
+      expect(defaultAgents).toContain('优先级判断');
     });
   });
 });

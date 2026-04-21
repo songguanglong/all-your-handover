@@ -30,7 +30,7 @@ export function formatYearMonth(): string {
 // YAML-safe string: quote if contains special chars
 function yamlValue(val: string): string {
   if (!val) return '""';
-  if (/[:\n\r"',{}[\]#&*!|>'"%`]/.test(val) || val.trim() !== val) {
+  if (/[:\n\r"',{}\[\]#&*!|>'"%`]/.test(val) || val.trim() !== val) {
     return `"${val.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   }
   return val;

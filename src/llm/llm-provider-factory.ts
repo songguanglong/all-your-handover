@@ -81,6 +81,7 @@ class LLMProviderFactory {
     if (route?.providerId) {
       const provider = this.providers.get(route.providerId);
       if (provider) return provider;
+      logger.warn(`LLM路由: 任务"${task}"指定了provider "${route.providerId}"但未找到，回退到默认provider`);
     }
     // Fallback to default
     if (this.hasDefault()) return this.getDefault();

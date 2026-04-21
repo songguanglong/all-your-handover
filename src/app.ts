@@ -10,8 +10,7 @@ import { setAutoCommit as setDraftRawAutoCommit } from './services/draft-raw-ser
 import { setAutoCommit as setDraftAnalysisAutoCommit } from './services/draft-analysis-service';
 import { setAutoCommit as setDraftPreviewAutoCommit } from './services/draft-preview-service';
 import { setAutoCommit as setHandoverAutoCommit } from './services/handover-service';
-import { setAutoCommit as setSoulAutoCommit } from './services/agent-soul-service';
-import { setAutoCommit as setNewSoulAutoCommit } from './services/soul-service';
+import { setAutoCommit as setSoulAutoCommit } from './services/soul-service';
 import { setAutoCommit as setAgentsAutoCommit } from './services/agents-service';
 import { setAutoCommit as setChannelMemoryAutoCommit } from './services/channel-memory-service';
 import { setAutoCommit as setExperienceAutoCommit } from './services/experience-service';
@@ -48,7 +47,6 @@ export class App {
     setDraftPreviewAutoCommit(gitAutoCommit);
     setHandoverAutoCommit(gitAutoCommit);
     setSoulAutoCommit(gitAutoCommit);
-    setNewSoulAutoCommit(gitAutoCommit);
     setAgentsAutoCommit(gitAutoCommit);
     setChannelMemoryAutoCommit(gitAutoCommit);
     setExperienceAutoCommit(gitAutoCommit);

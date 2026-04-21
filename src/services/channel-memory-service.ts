@@ -40,6 +40,9 @@ interface CandidatesFile {
   entries: CandidateEntry[];
 }
 
+// Candidates older than 30 days with count < 2 are pruned on each write
+const CANDIDATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 const DEFAULT_MEMORY = `# 渠道记忆
 
 ## 用户偏好
@@ -94,6 +97,12 @@ export async function recordDiffCandidate(channelCode: string, diff: DiffEntry):
   try {
     const data = await fs.readFile(p, 'utf-8');
     file = JSON.parse(data) as CandidatesFile;
+    // Prune stale candidates (older than 30 days with count < 2)
+    const cutoff = Date.now() - CANDIDATE_TTL_MS;
+    file.entries = file.entries.filter(e => {
+      const seen = new Date(e.lastSeen).getTime();
+      return e.count >= 2 || seen > cutoff;
+    });
   } catch {
     file = { entries: [] };
   }

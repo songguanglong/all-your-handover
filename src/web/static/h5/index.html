@@ -655,6 +655,18 @@
     window.addEventListener('beforeunload', () => {
       if (pollTimer) clearInterval(pollTimer);
     });
+
+    // Pause/resume polling based on page visibility
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = null;
+      } else {
+        // Page visible again — poll immediately then resume interval
+        pollForUpdates();
+        startPolling();
+      }
+    });
   </script>
 </body>
 </html>

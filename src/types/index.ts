@@ -299,23 +299,6 @@ export interface ApiResponse {
   data?: unknown;
 }
 
-// --- Agent Soul ---
-
-export interface AgentSoul {
-  persona: string;
-  scenario?: string;
-  customScenario?: string;
-  constraints: string[];
-  tone?: string;
-}
-
-export interface AgentSoulTemplate {
-  id: string;
-  name: string;
-  description: string;
-  soul: AgentSoul;
-}
-
 // --- Thinking Mode ---
 
 export type ThinkingMode = 'quick' | 'standard' | 'deep';
@@ -352,5 +335,4 @@ export interface ExperienceFile {
 
 export interface DreamConfig {
   enabled: boolean;
-  cronHour: number;
 }

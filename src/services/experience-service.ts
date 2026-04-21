@@ -17,14 +17,16 @@ function experiencePath(channelCode: string): string {
   return path.join(getDataDir(), `channels/${channelCode}/experience.json`);
 }
 
-const EMPTY_EXPERIENCE: ExperienceFile = { entries: [] };
+function emptyExperience(): ExperienceFile {
+  return { entries: [] };
+}
 
 export async function getExperience(channelCode: string): Promise<ExperienceFile> {
   try {
     const data = await fs.readFile(experiencePath(channelCode), 'utf-8');
     return JSON.parse(data);
   } catch {
-    return { ...EMPTY_EXPERIENCE };
+    return emptyExperience();
   }
 }
 

@@ -609,16 +609,24 @@ document.addEventListener('DOMContentLoaded', () => {
     main.innerHTML = `
       <div class="card">
         <h2>Agent 人设 (Soul)</h2>
+        <p style="color:#666;font-size:13px;margin-bottom:8px;">定义助手的人格、语气和行为边界。使用 Markdown 格式。</p>
         <div class="form-group"><label>渠道</label><select id="agent-channel">${chList.map(ch => `<option value="${ch.code}">${ch.name} (${ch.code})</option>`).join('')}</select></div>
-        <div class="form-group"><label>场景模板</label><select id="agent-template"><option value="">-- 选择内置模板 --</option></select></div>
-        <div class="form-group"><label>人设描述</label><textarea id="agent-persona" rows="2" placeholder="如：你是一位专业的酒店前台交接班助手"></textarea></div>
-        <div class="form-group"><label>语气风格</label><input id="agent-tone" placeholder="如：专业、细致"></div>
-        <div class="form-group"><label>行为约束（每行一条）</label><textarea id="agent-constraints" rows="3" placeholder="关注客房状态&#10;关注宾客特殊需求"></textarea></div>
-        <div class="form-group"><label>自定义场景描述</label><textarea id="agent-custom" rows="2" placeholder="仅在场景为自定义时使用"></textarea></div>
+        <div class="form-group"><label>人设 (soul.md)</label><textarea id="agent-soul" rows="8" style="font-family:monospace;font-size:13px;" placeholder="# 交班助手人格&#10;&#10;## 我是谁&#10;交班助手。记录、整理、交接。"></textarea></div>
         <div id="agent-soul-error"></div>
         <div class="btn-group">
           <button class="btn btn-primary" id="save-soul">保存</button>
           <button class="btn btn-default" id="reset-soul">重置为默认</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>行为守则 (Agents)</h2>
+        <p style="color:#666;font-size:13px;margin-bottom:8px;">定义助手的优先级判断、整理规范和禁忌。使用 Markdown 格式。</p>
+        <div class="form-group"><label>渠道</label><select id="agents-channel">${chList.map(ch => `<option value="${ch.code}">${ch.name} (${ch.code})</option>`).join('')}</select></div>
+        <div class="form-group"><label>行为守则 (agents.md)</label><textarea id="agents-content" rows="8" style="font-family:monospace;font-size:13px;" placeholder="# 行为守则&#10;&#10;## 优先级判断&#10;- 涉及人身安全 → 高"></textarea></div>
+        <div id="agents-error"></div>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="save-agents">保存</button>
+          <button class="btn btn-default" id="reset-agents">重置为默认</button>
         </div>
       </div>
       <div class="card">
@@ -629,9 +637,8 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
       <div class="card">
         <h2>深度反思 (Dream)</h2>
-        <p style="color:#666;font-size:13px;margin-bottom:8px;">定期审视经验规则，提炼优化。也可手动触发。</p>
-        <div class="form-group"><label>启用定时反思</label><select id="dream-enabled"><option value="true">是</option><option value="false">否</option></select></div>
-        <div class="form-group"><label>反思时间（每天）</label><select id="dream-hour">${Array.from({length:24}, (_,i) => `<option value="${i}"${i===3?' selected':''}>${String(i).padStart(2,'0')}:00</option>`).join('')}</select></div>
+        <p style="color:#666;font-size:13px;margin-bottom:8px;">交班后自动审视经验规则，提炼优化。也可手动触发。</p>
+        <div class="form-group"><label>启用自动反思</label><select id="dream-enabled"><option value="true">是</option><option value="false">否</option></select></div>
         <div id="dream-info"></div>
         <div id="dream-error"></div>
         <div class="btn-group">
@@ -640,26 +647,16 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>`;
 
-    // Load templates
-    const templatesData = await api.get(`/channels/${code}/agent/soul/templates`);
-    const templates = templatesData.data?.templates || [];
-    const tmplSelect = document.getElementById('agent-template');
-    templates.forEach(t => {
-      const opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = `${t.name} - ${t.description}`;
-      tmplSelect.appendChild(opt);
-    });
-
     // Load current soul
     async function loadSoul(chCode) {
       const res = await api.get(`/channels/${chCode}/agent/soul`);
-      const soul = res.data?.soul || {};
-      document.getElementById('agent-persona').value = soul.persona || '';
-      document.getElementById('agent-tone').value = soul.tone || '';
-      document.getElementById('agent-constraints').value = (soul.constraints || []).join('\n');
-      document.getElementById('agent-custom').value = soul.customScenario || '';
-      document.getElementById('agent-template').value = soul.scenario || '';
+      document.getElementById('agent-soul').value = res.data?.soul || '';
+    }
+
+    // Load current agents
+    async function loadAgents(chCode) {
+      const res = await api.get(`/channels/${chCode}/agent/agents`);
+      document.getElementById('agents-content').value = res.data?.agents || '';
     }
 
     // Load experience
@@ -694,11 +691,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await api.get(`/channels/${chCode}/agent/dream-config`);
       const config = res.data?.config || {};
       document.getElementById('dream-enabled').value = String(config.enabled ?? true);
-      document.getElementById('dream-hour').value = String(config.cronHour ?? 3);
     }
 
     // Initial load
     await loadSoul(code);
+    await loadAgents(code);
     await loadExperience(code);
     await loadDreamConfig(code);
 
@@ -708,16 +705,8 @@ document.addEventListener('DOMContentLoaded', () => {
       await loadExperience(e.target.value);
       await loadDreamConfig(e.target.value);
     });
-
-    // Template auto-fill
-    document.getElementById('agent-template').addEventListener('change', (e) => {
-      const tmpl = templates.find(t => t.id === e.target.value);
-      if (tmpl) {
-        document.getElementById('agent-persona').value = tmpl.soul.persona;
-        document.getElementById('agent-tone').value = tmpl.soul.tone || '';
-        document.getElementById('agent-constraints').value = (tmpl.soul.constraints || []).join('\n');
-        document.getElementById('agent-custom').value = tmpl.soul.customScenario || '';
-      }
+    document.getElementById('agents-channel').addEventListener('change', async (e) => {
+      await loadAgents(e.target.value);
     });
 
     // Save soul
@@ -726,13 +715,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const btn = document.getElementById('save-soul');
       try {
         btn.disabled = true;
-        await api.put(`/channels/${ch}/agent/soul`, {
-          persona: document.getElementById('agent-persona').value,
-          tone: document.getElementById('agent-tone').value,
-          constraints: document.getElementById('agent-constraints').value.split('\n').map(s => s.trim()).filter(Boolean),
-          customScenario: document.getElementById('agent-custom').value,
-          scenario: document.getElementById('agent-template').value || 'custom',
-        });
+        await api.put(`/channels/${ch}/agent/soul`, { content: document.getElementById('agent-soul').value });
         document.getElementById('agent-soul-error').innerHTML = '<div class="success">人设已保存</div>';
       } catch (err) {
         document.getElementById('agent-soul-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
@@ -746,14 +729,35 @@ document.addEventListener('DOMContentLoaded', () => {
       const ch = document.getElementById('agent-channel').value;
       try {
         const res = await api.put(`/channels/${ch}/agent/soul/reset`, {});
-        const soul = res.data?.soul || {};
-        document.getElementById('agent-persona').value = soul.persona || '';
-        document.getElementById('agent-tone').value = soul.tone || '';
-        document.getElementById('agent-constraints').value = (soul.constraints || []).join('\n');
-        document.getElementById('agent-custom').value = soul.customScenario || '';
-        document.getElementById('agent-template').value = '';
+        document.getElementById('agent-soul').value = res.data?.soul || '';
       } catch (err) {
         document.getElementById('agent-soul-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      }
+    });
+
+    // Save agents
+    document.getElementById('save-agents').addEventListener('click', async () => {
+      const ch = document.getElementById('agents-channel').value;
+      const btn = document.getElementById('save-agents');
+      try {
+        btn.disabled = true;
+        await api.put(`/channels/${ch}/agent/agents`, { content: document.getElementById('agents-content').value });
+        document.getElementById('agents-error').innerHTML = '<div class="success">行为守则已保存</div>';
+      } catch (err) {
+        document.getElementById('agents-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Reset agents
+    document.getElementById('reset-agents').addEventListener('click', async () => {
+      const ch = document.getElementById('agents-channel').value;
+      try {
+        const res = await api.put(`/channels/${ch}/agent/agents/reset`, {});
+        document.getElementById('agents-content').value = res.data?.agents || '';
+      } catch (err) {
+        document.getElementById('agents-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
       }
     });
 
@@ -778,7 +782,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.disabled = true;
         await api.put(`/channels/${ch}/agent/dream-config`, {
           enabled: document.getElementById('dream-enabled').value === 'true',
-          cronHour: parseInt(document.getElementById('dream-hour').value, 10),
         });
         document.getElementById('dream-error').innerHTML = '<div class="success">反思配置已保存</div>';
       } catch (err) {

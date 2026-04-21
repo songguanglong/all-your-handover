@@ -1,8 +1,9 @@
 import type { Router } from 'express';
-import type { AgentSoul, DreamConfig } from '../types';
-import { getSoul, saveSoul, resetSoul, getTemplates } from '../services/agent-soul-service';
+import type { DreamConfig } from '../types';
+import { getSoul, saveSoul, getDefaultSoul } from '../services/soul-service';
+import { getAgents, saveAgents, getDefaultAgents } from '../services/agents-service';
 import { getExperience, removeEntry } from '../services/experience-service';
-import { getDreamConfig, saveDreamConfig, runDream } from '../services/dream-service';
+import { getDreamConfig, saveDreamConfig } from '../services/dream-service';
 import { llmProviderFactory } from '../llm/llm-provider-factory';
 import { sanitizeError } from './sanitize-error';
 
@@ -13,7 +14,7 @@ function validateCode(code: string): boolean {
 }
 
 export function registerAgentRoutes(router: Router, prefix: string): void {
-  // --- Agent Soul ---
+  // --- Soul (markdown) ---
 
   router.get(`${prefix}/channels/:code/agent/soul`, async (req, res) => {
     try {
@@ -30,9 +31,11 @@ export function registerAgentRoutes(router: Router, prefix: string): void {
     try {
       const { code } = req.params;
       if (!validateCode(code)) return res.status(400).json({ code: -1, message: 'Invalid channel code' });
-      const soul = req.body as AgentSoul;
-      if (!soul.persona) return res.status(400).json({ code: -1, message: 'persona is required' });
-      await saveSoul(code, soul);
+      const { content } = req.body;
+      if (typeof content !== 'string' || !content.trim()) {
+        return res.status(400).json({ code: -1, message: 'soul 内容不能为空' });
+      }
+      await saveSoul(code, content);
       res.json({ code: 0 });
     } catch (err) {
       res.status(500).json({ code: -1, message: sanitizeError(err) });
@@ -43,7 +46,7 @@ export function registerAgentRoutes(router: Router, prefix: string): void {
     try {
       const { code } = req.params;
       if (!validateCode(code)) return res.status(400).json({ code: -1, message: 'Invalid channel code' });
-      await resetSoul(code);
+      await saveSoul(code, getDefaultSoul());
       const soul = await getSoul(code);
       res.json({ code: 0, data: { soul } });
     } catch (err) {
@@ -51,10 +54,41 @@ export function registerAgentRoutes(router: Router, prefix: string): void {
     }
   });
 
-  router.get(`${prefix}/channels/:code/agent/soul/templates`, async (_req, res) => {
+  // --- Agents (markdown) ---
+
+  router.get(`${prefix}/channels/:code/agent/agents`, async (req, res) => {
     try {
-      const templates = getTemplates();
-      res.json({ code: 0, data: { templates } });
+      const { code } = req.params;
+      if (!validateCode(code)) return res.status(400).json({ code: -1, message: 'Invalid channel code' });
+      const agents = await getAgents(code);
+      res.json({ code: 0, data: { agents } });
+    } catch (err) {
+      res.status(500).json({ code: -1, message: sanitizeError(err) });
+    }
+  });
+
+  router.put(`${prefix}/channels/:code/agent/agents`, async (req, res) => {
+    try {
+      const { code } = req.params;
+      if (!validateCode(code)) return res.status(400).json({ code: -1, message: 'Invalid channel code' });
+      const { content } = req.body;
+      if (typeof content !== 'string' || !content.trim()) {
+        return res.status(400).json({ code: -1, message: 'agents 内容不能为空' });
+      }
+      await saveAgents(code, content);
+      res.json({ code: 0 });
+    } catch (err) {
+      res.status(500).json({ code: -1, message: sanitizeError(err) });
+    }
+  });
+
+  router.put(`${prefix}/channels/:code/agent/agents/reset`, async (req, res) => {
+    try {
+      const { code } = req.params;
+      if (!validateCode(code)) return res.status(400).json({ code: -1, message: 'Invalid channel code' });
+      await saveAgents(code, getDefaultAgents());
+      const agents = await getAgents(code);
+      res.json({ code: 0, data: { agents } });
     } catch (err) {
       res.status(500).json({ code: -1, message: sanitizeError(err) });
     }
@@ -103,9 +137,6 @@ export function registerAgentRoutes(router: Router, prefix: string): void {
       if (!validateCode(code)) return res.status(400).json({ code: -1, message: 'Invalid channel code' });
       const config = req.body as DreamConfig;
       if (typeof config.enabled !== 'boolean') return res.status(400).json({ code: -1, message: 'enabled is required' });
-      if (typeof config.cronHour !== 'number' || config.cronHour < 0 || config.cronHour > 23) {
-        return res.status(400).json({ code: -1, message: 'cronHour must be 0-23' });
-      }
       await saveDreamConfig(code, config);
       res.json({ code: 0 });
     } catch (err) {
@@ -123,9 +154,10 @@ export function registerAgentRoutes(router: Router, prefix: string): void {
         return res.status(400).json({ code: -1, message: '未配置默认 LLM Provider' });
       }
 
+      const { runPostHandoverDream } = await import('../services/dream-service');
       const provider = llmProviderFactory.getDefault();
       const chatCompletion = (messages: Array<{ role: string; content: string }>) => provider.chatCompletion(messages, 'deep');
-      const report = await runDream(code, chatCompletion);
+      const report = await runPostHandoverDream(code, 0.5, chatCompletion);
 
       if (!report) {
         return res.json({ code: 0, data: { message: '没有经验规则可供反思' } });

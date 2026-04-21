@@ -13,9 +13,10 @@ import { addReaction } from './reaction-service';
 import { logger } from '../utils/logger';
 import { getDataDir } from '../utils/data-dir';
 
-const TEXT_ANALYSIS_PROMPT = '分析以下交接班消息，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}';
-const IMAGE_ANALYSIS_PROMPT = '描述这张交接班相关图片的内容。返回JSON: {"category":"类别","content":"描述","urgency":"high/normal/low"}';
-const AUDIO_ANALYSIS_PROMPT = '分析以下交接班语音内容，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}';
+const VALID_CATEGORIES_PROMPT = '重要事项, 一般事项, 待办事项, 待跟进事项, 客房, 设备, 安全, 客户, 未分类';
+const TEXT_ANALYSIS_PROMPT = `分析以下交接班消息，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}\ncategory 必须是以下之一: ${VALID_CATEGORIES_PROMPT}`;
+const IMAGE_ANALYSIS_PROMPT = `描述这张交接班相关图片的内容。返回JSON: {"category":"类别","content":"描述","urgency":"high/normal/low"}\ncategory 必须是以下之一: ${VALID_CATEGORIES_PROMPT}`;
+const AUDIO_ANALYSIS_PROMPT = `分析以下交接班语音内容，提取关键信息。返回JSON: {"category":"类别","content":"摘要","urgency":"high/normal/low"}\ncategory 必须是以下之一: ${VALID_CATEGORIES_PROMPT}`;
 const AUDIO_TRANSCRIPTION_PROMPT = '转写这段交接班语音内容。';
 
 function noProviderFallback(text: string): () => Promise<AnalyzeResult> {

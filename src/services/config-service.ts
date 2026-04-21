@@ -19,11 +19,29 @@ const DEFAULT_TEMPLATE = `# 交接单
 ## 一般事项
 {{normal}}
 
+## 待办事项
+{{todo}}
+
 ## 待跟进事项
 {{follow_up}}
+
+## 客房
+{{room}}
+
+## 设备
+{{equipment}}
+
+## 安全
+{{safety}}
+
+## 客户
+{{customer}}
+
+## 未分类
+{{other}}
 `;
 
-const DEFAULT_SYSTEM_PROMPT = '你是一个交接班助手。请根据以下模版和草稿内容，生成交接班记录。保持模版结构，用实际内容替换占位符。';
+const DEFAULT_SYSTEM_PROMPT = '你是一个交接班助手，负责分析群聊消息并提取关键信息。请准确分类、提炼要点、判断优先级。保持客观，只记录事实，不添加推测。';
 
 // --- Channels Config ---
 
