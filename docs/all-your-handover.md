@@ -757,6 +757,8 @@ npm run pkg   # 生成平台特定可执行文件
 - `ENCRYPTION_KEY` 环境变量：SHA-256 派生密钥
 - 未设 `ENCRYPTION_KEY`：自动生成随机密钥存入 `data/config/.encryption-key`（mode 0o600）
 - 丢失密钥：加密数据不可恢复
+- `ADMIN_TOKEN` 环境变量：管理后台 Bearer Token 认证，使用 `timingSafeEqual` 防时序攻击
+- 未设 `ADMIN_TOKEN`：管理后台无认证保护（仅限开发环境）
 
 ---
 
