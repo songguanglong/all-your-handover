@@ -20,6 +20,7 @@
     .actions { display: flex; gap: 12px; margin-top: 16px; }
     .btn { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
     .btn-primary { background: #1a73e8; color: white; }
+    .btn-save { background: #34a853; color: white; }
     .btn-secondary { background: #f1f3f4; color: #333; }
     .btn-danger { background: #ea4335; color: white; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -27,7 +28,11 @@
     .pending-info { background: #e8f0fe; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
     .pending-info h3 { margin-bottom: 8px; }
     .error { background: #fce8e6; padding: 12px; border-radius: 8px; margin-bottom: 16px; color: #c5221f; }
-    #editBtn { background: #f1f3f4; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-bottom: 12px; }
+    .saved-toast { background: #d4edda; color: #155724; padding: 8px 12px; border-radius: 4px; font-size: 13px; display: inline-block; margin-bottom: 12px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .toolbar-left { display: flex; gap: 8px; }
+    .toolbar button { padding: 6px 14px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 14px; background: white; }
+    .toolbar button.active { background: #1a73e8; color: white; border-color: #1a73e8; }
   </style>
 </head>
 <body>
@@ -37,23 +42,32 @@
     <div id="status" class="status">加载中...</div>
     <div id="content" style="display:none">
       <div id="completeness" class="completeness" style="display:none"></div>
+      <div id="savedToast" class="saved-toast" style="display:none">草稿已保存</div>
 
-      <!-- No pending handover: show draft -->
+      <!-- Draft view -->
       <div id="draftView">
-        <button id="editBtn" onclick="toggleEdit()">编辑</button>
-        <div id="previewDisplay" class="preview"></div>
-        <div id="previewEditor" style="display:none">
-          <textarea id="editorArea" class="editor"></textarea>
-          <div style="margin-top:8px;text-align:right">
-            <button class="btn btn-secondary" onclick="savePreview()" style="flex:none;padding:8px 16px">保存</button>
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button id="viewBtn" class="active" onclick="switchToView()">查看</button>
+            <button id="editBtn" onclick="switchToEdit()">编辑</button>
           </div>
         </div>
+
+        <!-- View mode -->
+        <div id="previewDisplay" class="preview"></div>
+
+        <!-- Edit mode -->
+        <div id="previewEditor" style="display:none">
+          <textarea id="editorArea" class="editor"></textarea>
+        </div>
+
         <div class="actions">
+          <button class="btn btn-save" onclick="saveDraft()">保存草稿</button>
           <button class="btn btn-primary" onclick="startHandover()">确认交班</button>
         </div>
       </div>
 
-      <!-- Pending handover: show accept/reject -->
+      <!-- Pending handover: accept/reject -->
       <div id="pendingView" style="display:none">
         <div class="pending-info">
           <h3>待接班</h3>
@@ -73,7 +87,8 @@
     const API_BASE = '/api/h5';
     let channelCode = '';
     let editing = false;
-    let currentUser = null; // { open_id, name }
+    let currentUser = null;
+    let toastTimer = null;
 
     function getChannelCode() {
       const params = new URLSearchParams(window.location.search);
@@ -96,12 +111,9 @@
           console.error('认证失败:', err);
         }
       }
-
       const cached = sessionStorage.getItem('h5_user');
       if (cached) {
-        try {
-          currentUser = JSON.parse(cached);
-        } catch {}
+        try { currentUser = JSON.parse(cached); } catch {}
       }
     }
 
@@ -113,6 +125,13 @@
 
     function hideError() {
       document.getElementById('error').style.display = 'none';
+    }
+
+    function showSavedToast() {
+      const el = document.getElementById('savedToast');
+      el.style.display = 'inline-block';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3000);
     }
 
     async function loadDraft() {
@@ -129,7 +148,6 @@
         document.getElementById('status').style.display = 'none';
         document.getElementById('content').style.display = 'block';
 
-        // Completeness check
         const compEl = document.getElementById('completeness');
         if (d.missingCount > 0) {
           compEl.textContent = `还有 ${d.missingCount} 条消息未分析（共 ${d.rawCount} 条）`;
@@ -141,7 +159,6 @@
           compEl.style.display = 'block';
         }
 
-        // Render preview
         const previewEl = document.getElementById('previewDisplay');
         previewEl.innerHTML = renderMarkdown(d.preview || '暂无内容');
         document.getElementById('editorArea').value = d.preview || '';
@@ -150,17 +167,7 @@
       }
     }
 
-    async function checkPending() {
-      try {
-        // Try to load draft first
-        await loadDraft();
-      } catch (err) {
-        showError('加载失败');
-      }
-    }
-
     function renderMarkdown(text) {
-      // Simple markdown rendering for preview
       return text
         .replace(/^### (.+)$/gm, '<h3>$1</h3>')
         .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -170,18 +177,33 @@
         .replace(/\n/g, '<br>');
     }
 
-    function toggleEdit() {
-      editing = !editing;
-      document.getElementById('previewDisplay').style.display = editing ? 'none' : 'block';
-      document.getElementById('previewEditor').style.display = editing ? 'block' : 'none';
-      document.getElementById('editBtn').textContent = editing ? '查看' : '编辑';
-      if (editing) {
-        document.getElementById('editorArea').focus();
-      }
+    function switchToView() {
+      editing = false;
+      document.getElementById('previewDisplay').style.display = 'block';
+      document.getElementById('previewEditor').style.display = 'none';
+      document.getElementById('viewBtn').classList.add('active');
+      document.getElementById('editBtn').classList.remove('active');
     }
 
-    async function savePreview() {
-      const content = document.getElementById('editorArea').value;
+    function switchToEdit() {
+      editing = true;
+      document.getElementById('previewDisplay').style.display = 'none';
+      document.getElementById('previewEditor').style.display = 'block';
+      document.getElementById('editBtn').classList.add('active');
+      document.getElementById('viewBtn').classList.remove('active');
+      document.getElementById('editorArea').focus();
+    }
+
+    async function saveDraft() {
+      const content = editing
+        ? document.getElementById('editorArea').value
+        : undefined;  // In view mode, nothing to save (no edits)
+
+      if (!content && editing) return;
+
+      // If in view mode and no editor changes, nothing to save
+      if (!editing) return;
+
       try {
         const res = await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
           method: 'PUT',
@@ -190,12 +212,8 @@
         });
         const data = await res.json();
         if (data.code === 0) {
-          // Reload to show updated preview
-          await loadDraft();
-          editing = false;
-          document.getElementById('previewDisplay').style.display = 'block';
-          document.getElementById('previewEditor').style.display = 'none';
-          document.getElementById('editBtn').textContent = '编辑';
+          showSavedToast();
+          // Stay in edit mode so user can keep editing
         } else {
           showError(data.message || '保存失败');
         }
@@ -205,6 +223,18 @@
     }
 
     async function startHandover() {
+      // If in edit mode, auto-save first
+      if (editing) {
+        const content = document.getElementById('editorArea').value;
+        try {
+          await fetch(`${API_BASE}/draft/${channelCode}/preview`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+          });
+        } catch {}
+      }
+
       if (!confirm('确认发起交班？')) return;
       const body = {};
       if (currentUser) {
@@ -278,7 +308,7 @@
     if (!channelCode) {
       document.getElementById('status').textContent = '缺少渠道参数';
     } else {
-      authenticate().then(() => checkPending());
+      authenticate().then(() => loadDraft());
     }
   </script>
 </body>
