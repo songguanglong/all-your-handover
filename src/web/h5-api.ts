@@ -56,6 +56,11 @@ export function registerH5Routes(router: Router, prefix: string): void {
     }
     activeSSEConnections++;
 
+    // Ensure counter is decremented even if setup throws
+    let cleaned = false;
+    const decrement = () => { if (!cleaned) { cleaned = true; activeSSEConnections--; } };
+
+    try {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -89,10 +94,13 @@ export function registerH5Routes(router: Router, prefix: string): void {
 
     // Cleanup on close
     req.on('close', () => {
-      activeSSEConnections--;
+      decrement();
       offDraftUpdate(channelCode, handler);
       clearInterval(heartbeat);
     });
+    } catch {
+      decrement();
+    }
   });
 
   // Lightweight status poll (for H5 periodic check — avoids fetching full preview)

@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 import { getKey } from './encryption';
 
+// Token format: base64url(JSON).HMAC-SHA256
+// Payload is readable (not encrypted) but tamper-proof via HMAC signature.
+// open_id and name are visible to anyone who decodes the token.
 const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface H5Session {

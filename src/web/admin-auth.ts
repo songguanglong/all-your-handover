@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 
+// Warn once per process startup if ADMIN_TOKEN is unset, then allow all requests (dev mode)
 let tokenWarningLogged = false;
 
 export function adminAuthMiddleware(req: Request, res: Response, next: NextFunction): void {

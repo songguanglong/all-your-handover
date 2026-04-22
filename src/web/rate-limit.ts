@@ -7,6 +7,7 @@ interface RateLimitEntry {
 }
 
 const store = new Map<string, RateLimitEntry>();
+const MAX_STORE_SIZE = 10_000;
 
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_MAX_REQUESTS = 60;
@@ -31,6 +32,15 @@ export function rateLimit(windowMs: number = DEFAULT_WINDOW_MS, maxRequests: num
     const entry = store.get(key);
 
     if (!entry || entry.resetAt <= now) {
+      if (store.size >= MAX_STORE_SIZE) {
+        // Evict oldest entry to bound memory
+        let oldestKey = '';
+        let oldestAt = Infinity;
+        for (const [k, e] of store) {
+          if (e.resetAt < oldestAt) { oldestAt = e.resetAt; oldestKey = k; }
+        }
+        if (oldestKey) store.delete(oldestKey);
+      }
       store.set(key, { count: 1, resetAt: now + windowMs });
       res.setHeader('X-RateLimit-Limit', String(maxRequests));
       res.setHeader('X-RateLimit-Remaining', String(maxRequests - 1));

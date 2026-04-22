@@ -1,5 +1,11 @@
 // In-process Mutex for concurrent draft writes
 // Single-process, no cross-process risk
+//
+// Timeout note: if lock A times out while B is queued behind A,
+// B will also time out because B's `prev` still references A's
+// never-resolved promise. This causes cascade timeouts, but is
+// acceptable because a 10s timeout indicates a real deadlock that
+// needs investigation rather than retry.
 
 import { logger } from './logger';
 
