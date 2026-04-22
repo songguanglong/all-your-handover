@@ -4,7 +4,9 @@ data/
 *.log
 .env
 .env.local
+.env.win
 *.exe
 *.pkg
 .DS_Store
 thumbs.db
+scripts/nssm.exe

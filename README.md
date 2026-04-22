@@ -133,6 +133,43 @@ sudo node dist/index.js --data /var/lib/handover
 node dist/index.js uninstall
 ```
 
+### 方式四：Windows Server 服务
+
+**前置要求**：Windows Server 2012+，管理员权限，[NSSM](https://nssm.cc/download)
+
+```cmd
+:: 1. 构建应用
+npm install
+npm run build
+
+:: 2. 下载 nssm.exe 放入 scripts/ 目录
+::    https://nssm.cc/download
+
+:: 3. 以管理员身份运行安装脚本
+scripts\install-service.bat
+
+:: 4. 编辑配置（可选，修改后需重启服务）
+notepad .env.win
+nssm restart AllYourHandover
+```
+
+**卸载服务**：
+
+```cmd
+:: 以管理员身份运行（数据保留）
+scripts\uninstall-service.bat
+```
+
+**服务管理**：
+
+| 命令 | 说明 |
+|------|------|
+| `nssm start AllYourHandover` | 启动服务 |
+| `nssm stop AllYourHandover` | 停止服务 |
+| `nssm restart AllYourHandover` | 重启服务 |
+| `nssm status AllYourHandover` | 查看状态 |
+| `nssm edit AllYourHandover` | 编辑服务配置（GUI） |
+
 ### 首次使用
 
 1. **启动服务**后访问 `http://localhost:3000/admin`

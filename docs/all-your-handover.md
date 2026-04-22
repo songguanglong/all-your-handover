@@ -747,9 +747,34 @@ npm run pkg   # 生成平台特定可执行文件
 
 ### 9.2 系统服务
 
-- Linux：systemd 服务注册（`registerService`/`unregisterService`）
-- Windows：日志提示手动配置
-- Docker：容器自动重启
+- **Linux**：systemd 服务注册（自动注册）
+  ```bash
+  # 以 sudo 启动，自动注册为 systemd 服务
+  sudo node dist/index.js --data /var/lib/handover
+
+  # 卸载
+  node dist/index.js uninstall
+  ```
+- **Windows**：NSSM 服务注册（一键安装/卸载）
+  ```cmd
+  :: 1. 下载 nssm.exe 放入 scripts/ 目录 (https://nssm.cc/download)
+  :: 2. 以管理员身份运行:
+  scripts\install-service.bat
+
+  :: 管理命令
+  nssm start AllYourHandover
+  nssm stop AllYourHandover
+  nssm restart AllYourHandover
+  nssm status AllYourHandover
+
+  :: 修改配置后重启
+  notepad .env.win
+  nssm restart AllYourHandover
+
+  :: 卸载 (数据保留)
+  scripts\uninstall-service.bat
+  ```
+- **Docker**：容器自动重启（`restart: unless-stopped`）
 
 ### 9.3 数据安全
 
