@@ -1,6 +1,6 @@
 {
   "name": "all-your-handover",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "轻量级本地部署的酒店交接班工具 — 数据自有，交接由你做主",
   "main": "dist/index.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src/",
+    "lint": "eslint --rulesdir eslint-rules/ src/",
     "docs:update": "node scripts/update-context.js",
     "pkg": "pkg package.json -t node18-linux-x64,node18-win-x64 -o dist/all-your-handover"
   },
@@ -32,6 +32,8 @@
     "@types/node": "^20.10.0",
     "@types/supertest": "^7.2.0",
     "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.56.0",
     "supertest": "^7.2.2",
     "tsx": "^4.7.0",
