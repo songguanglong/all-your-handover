@@ -1,0 +1,1154 @@
+{
+  "meta": {
+    "version": "0.2.0",
+    "techStack": [
+      "typescript",
+      "node",
+      "express",
+      "vitest"
+    ],
+    "entryFiles": [
+      "src/index.ts",
+      "dist/index.js"
+    ],
+    "scripts": {
+      "dev": "tsx watch src/index.ts",
+      "build": "tsc",
+      "start": "node dist/index.js",
+      "test": "vitest run",
+      "test:watch": "vitest",
+      "lint": "eslint src/",
+      "pkg": "pkg package.json -t node18-linux-x64,node18-win-x64 -o dist/all-your-handover"
+    },
+    "generatedAt": "2026-06-08T15:44:11.235Z",
+    "sourceHash": "141f58151e62e039"
+  },
+  "endpoints": {
+    "web": [
+      {
+        "method": "GET",
+        "path": "draft/:code/events",
+        "file": "src/web/h5-api.ts",
+        "line": 48,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "draft/:code/status",
+        "file": "src/web/h5-api.ts",
+        "line": 107,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "draft/:code",
+        "file": "src/web/h5-api.ts",
+        "line": 135,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "draft/:code/preview",
+        "file": "src/web/h5-api.ts",
+        "line": 165,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "handover/:code/start",
+        "file": "src/web/h5-api.ts",
+        "line": 248,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "handover/:code/accept",
+        "file": "src/web/h5-api.ts",
+        "line": 300,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "handover/:code/reject",
+        "file": "src/web/h5-api.ts",
+        "line": 332,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "draft/:code/assign-shift",
+        "file": "src/web/h5-api.ts",
+        "line": 361,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "handover/:code/pending",
+        "file": "src/web/h5-api.ts",
+        "line": 391,
+        "auth": "none"
+      }
+    ],
+    "admin": [
+      {
+        "method": "GET",
+        "path": "channels/:code/agent/soul",
+        "file": "src/web/admin-agent.ts",
+        "line": 19,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/agent/soul",
+        "file": "src/web/admin-agent.ts",
+        "line": 30,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/agent/soul/reset",
+        "file": "src/web/admin-agent.ts",
+        "line": 45,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "channels/:code/agent/agents",
+        "file": "src/web/admin-agent.ts",
+        "line": 59,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/agent/agents",
+        "file": "src/web/admin-agent.ts",
+        "line": 70,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/agent/agents/reset",
+        "file": "src/web/admin-agent.ts",
+        "line": 85,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "channels/:code/agent/experience",
+        "file": "src/web/admin-agent.ts",
+        "line": 99,
+        "auth": "none"
+      },
+      {
+        "method": "DELETE",
+        "path": "channels/:code/agent/experience/:id",
+        "file": "src/web/admin-agent.ts",
+        "line": 110,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "channels/:code/agent/dream-config",
+        "file": "src/web/admin-agent.ts",
+        "line": 123,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/agent/dream-config",
+        "file": "src/web/admin-agent.ts",
+        "line": 134,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "channels/:code/agent/dream/trigger",
+        "file": "src/web/admin-agent.ts",
+        "line": 148,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "channels",
+        "file": "src/web/admin-channels.ts",
+        "line": 11,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "channels",
+        "file": "src/web/admin-channels.ts",
+        "line": 21,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code",
+        "file": "src/web/admin-channels.ts",
+        "line": 69,
+        "auth": "none"
+      },
+      {
+        "method": "DELETE",
+        "path": "channels/:code",
+        "file": "src/web/admin-channels.ts",
+        "line": 95,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/toggle",
+        "file": "src/web/admin-channels.ts",
+        "line": 109,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "handovers",
+        "file": "src/web/admin-handovers.ts",
+        "line": 26,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "handovers/:channelCode/:month/:file",
+        "file": "src/web/admin-handovers.ts",
+        "line": 90,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "llm-providers",
+        "file": "src/web/admin-llm.ts",
+        "line": 12,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "llm-providers",
+        "file": "src/web/admin-llm.ts",
+        "line": 28,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "llm-providers/:id",
+        "file": "src/web/admin-llm.ts",
+        "line": 73,
+        "auth": "none"
+      },
+      {
+        "method": "DELETE",
+        "path": "llm-providers/:id",
+        "file": "src/web/admin-llm.ts",
+        "line": 110,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "llm-providers/:id/default",
+        "file": "src/web/admin-llm.ts",
+        "line": 126,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "llm-providers/:id/toggle",
+        "file": "src/web/admin-llm.ts",
+        "line": 143,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "status",
+        "file": "src/web/admin-monitoring.ts",
+        "line": 13,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "llm-queue",
+        "file": "src/web/admin-monitoring.ts",
+        "line": 39,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "logs",
+        "file": "src/web/admin-monitoring.ts",
+        "line": 50,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "platforms/:type",
+        "file": "src/web/admin-platforms.ts",
+        "line": 14,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "platforms/:type",
+        "file": "src/web/admin-platforms.ts",
+        "line": 40,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "platforms/:type/test",
+        "file": "src/web/admin-platforms.ts",
+        "line": 72,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "channels/:code/template",
+        "file": "src/web/admin-template.ts",
+        "line": 32,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/template",
+        "file": "src/web/admin-template.ts",
+        "line": 44,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/template/reset",
+        "file": "src/web/admin-template.ts",
+        "line": 58,
+        "auth": "none"
+      },
+      {
+        "method": "GET",
+        "path": "channels/:code/system-prompt",
+        "file": "src/web/admin-template.ts",
+        "line": 70,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/system-prompt",
+        "file": "src/web/admin-template.ts",
+        "line": 82,
+        "auth": "none"
+      },
+      {
+        "method": "PUT",
+        "path": "channels/:code/system-prompt/reset",
+        "file": "src/web/admin-template.ts",
+        "line": 97,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "channels/:code/system-prompt/interview",
+        "file": "src/web/admin-template.ts",
+        "line": 110,
+        "auth": "none"
+      }
+    ],
+    "webhook": [
+      {
+        "method": "POST",
+        "path": "webhook/feishu",
+        "file": "src/channels/webhook.ts",
+        "line": 16,
+        "auth": "none"
+      },
+      {
+        "method": "POST",
+        "path": "webhook/feishu/card",
+        "file": "src/channels/webhook.ts",
+        "line": 126,
+        "auth": "none"
+      }
+    ],
+    "auth": [
+      {
+        "method": "GET",
+        "path": "auth/feishu",
+        "file": "src/web/h5-auth.ts",
+        "line": 72,
+        "auth": "none"
+      }
+    ]
+  },
+  "types": {
+    "PreviousHandover": {
+      "file": "src/services/context-service.ts",
+      "line": 5,
+      "fields": [
+        "id",
+        "date",
+        "body"
+      ]
+    },
+    "DiffEntry": {
+      "file": "src/services/diff-detector.ts",
+      "line": 3,
+      "fields": [
+        "type",
+        "msgId",
+        "from",
+        "to",
+        "label",
+        "timestamp"
+      ]
+    },
+    "DreamCandidate": {
+      "file": "src/services/dream-service.ts",
+      "line": 43,
+      "fields": [
+        "id",
+        "content",
+        "section",
+        "confidence"
+      ]
+    },
+    "DreamReport": {
+      "file": "src/services/dream-service.ts",
+      "line": 50,
+      "fields": [
+        "modificationRate",
+        "candidatesGenerated",
+        "autoWritten",
+        "pendingReview"
+      ]
+    },
+    "UserInfo": {
+      "file": "src/types/index.ts",
+      "line": 7,
+      "fields": [
+        "id",
+        "name"
+      ]
+    },
+    "TextContent": {
+      "file": "src/types/index.ts",
+      "line": 16,
+      "fields": [
+        "type",
+        "text"
+      ]
+    },
+    "ImageContent": {
+      "file": "src/types/index.ts",
+      "line": 21,
+      "fields": [
+        "type",
+        "data",
+        "path"
+      ]
+    },
+    "AudioContent": {
+      "file": "src/types/index.ts",
+      "line": 27,
+      "fields": [
+        "type",
+        "data",
+        "path"
+      ]
+    },
+    "UnknownContent": {
+      "file": "src/types/index.ts",
+      "line": 33,
+      "fields": [
+        "type"
+      ]
+    },
+    "Message": {
+      "file": "src/types/index.ts",
+      "line": 39,
+      "fields": [
+        "id",
+        "chatId",
+        "senderId",
+        "senderName",
+        "sender",
+        "content",
+        "type",
+        "timestamp",
+        "mentionsBot",
+        "mentionsSelf",
+        "mentionList",
+        "parentId"
+      ]
+    },
+    "Command": {
+      "file": "src/types/index.ts",
+      "line": 58,
+      "fields": [
+        "type",
+        "sender"
+      ]
+    },
+    "ChannelSettings": {
+      "file": "src/types/index.ts",
+      "line": 65,
+      "fields": [
+        "requireAccept",
+        "messageFilter"
+      ]
+    },
+    "ChannelConfig": {
+      "file": "src/types/index.ts",
+      "line": 70,
+      "fields": [
+        "code",
+        "type",
+        "name",
+        "chatId",
+        "settings",
+        "isEnabled"
+      ]
+    },
+    "FeishuPlatformConfig": {
+      "file": "src/types/index.ts",
+      "line": 79,
+      "fields": [
+        "appId",
+        "appSecret",
+        "verificationToken",
+        "encryptKey"
+      ]
+    },
+    "ChannelsConfig": {
+      "file": "src/types/index.ts",
+      "line": 88,
+      "fields": [
+        "feishu",
+        "wecom",
+        "dingtalk",
+        "channels"
+      ]
+    },
+    "MessageContent": {
+      "file": "src/types/index.ts",
+      "line": 99,
+      "fields": [
+        "type",
+        "text"
+      ]
+    },
+    "CardContent": {
+      "file": "src/types/index.ts",
+      "line": 104,
+      "fields": [
+        "title",
+        "content",
+        "footer",
+        "config",
+        "elements"
+      ]
+    },
+    "CardElement": {
+      "file": "src/types/index.ts",
+      "line": 112,
+      "fields": [
+        "tag",
+        "content",
+        "elements",
+        "text",
+        "type",
+        "value",
+        "confirm",
+        "actions",
+        "folded"
+      ]
+    },
+    "ChannelAdapter": {
+      "file": "src/types/index.ts",
+      "line": 124,
+      "fields": [
+        "type",
+        "code",
+        "name",
+        "config",
+        "event",
+        "chatId",
+        "chatId",
+        "message",
+        "userId",
+        "chatId",
+        "messageId",
+        "messageId"
+      ]
+    },
+    "AnalyzeTextParams": {
+      "file": "src/types/index.ts",
+      "line": 142,
+      "fields": [
+        "text",
+        "prompt"
+      ]
+    },
+    "AnalyzeImageParams": {
+      "file": "src/types/index.ts",
+      "line": 147,
+      "fields": [
+        "imagePath",
+        "prompt"
+      ]
+    },
+    "TranscribeParams": {
+      "file": "src/types/index.ts",
+      "line": 152,
+      "fields": [
+        "audioPath",
+        "prompt"
+      ]
+    },
+    "GenerateHandoverParams": {
+      "file": "src/types/index.ts",
+      "line": 157,
+      "fields": [
+        "draft",
+        "template",
+        "previousHandover",
+        "systemPrompt",
+        "soulPrompt",
+        "experiencePrompt"
+      ]
+    },
+    "AnalyzeResult": {
+      "file": "src/types/index.ts",
+      "line": 166,
+      "fields": [
+        "category",
+        "content",
+        "urgency"
+      ]
+    },
+    "LLMProvider": {
+      "file": "src/types/index.ts",
+      "line": 172,
+      "fields": [
+        "id",
+        "type",
+        "name",
+        "config",
+        "params",
+        "params",
+        "params",
+        "params",
+        "messages"
+      ]
+    },
+    "LLMProviderConfig": {
+      "file": "src/types/index.ts",
+      "line": 185,
+      "fields": [
+        "id",
+        "name",
+        "type",
+        "apiKey",
+        "baseUrl",
+        "model",
+        "isDefault",
+        "isEnabled",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LLMProvidersConfig": {
+      "file": "src/types/index.ts",
+      "line": 198,
+      "fields": [
+        "providers",
+        "defaultProviderId",
+        "routes"
+      ]
+    },
+    "LLMTask": {
+      "file": "src/types/index.ts",
+      "line": 204,
+      "fields": [
+        "execute",
+        "onSuccess",
+        "onFailure",
+        "thinkingMode"
+      ]
+    },
+    "DraftRecord": {
+      "file": "src/types/index.ts",
+      "line": 213,
+      "fields": [
+        "messageId",
+        "type",
+        "sender",
+        "rawContent",
+        "analysis",
+        "status",
+        "timestamp"
+      ]
+    },
+    "RawRecord": {
+      "file": "src/types/index.ts",
+      "line": 225,
+      "fields": [
+        "id",
+        "ts",
+        "sender",
+        "sender_name",
+        "type",
+        "content",
+        "quoted_context",
+        "recalled_msg_id"
+      ]
+    },
+    "AnalysisItem": {
+      "file": "src/types/index.ts",
+      "line": 236,
+      "fields": [
+        "msgId",
+        "category",
+        "content",
+        "urgency",
+        "shift",
+        "analyzedAt",
+        "recalled"
+      ]
+    },
+    "AnalysisFile": {
+      "file": "src/types/index.ts",
+      "line": 246,
+      "fields": [
+        "lastUpdated",
+        "messageCount",
+        "items"
+      ]
+    },
+    "CompletenessCheckResult": {
+      "file": "src/types/index.ts",
+      "line": 252,
+      "fields": [
+        "totalRaw",
+        "totalAnalyzed",
+        "missing"
+      ]
+    },
+    "PendingHandover": {
+      "file": "src/types/index.ts",
+      "line": 260,
+      "fields": [
+        "channelCode",
+        "id",
+        "name",
+        "content",
+        "createdAt"
+      ]
+    },
+    "HandoverMeta": {
+      "file": "src/types/index.ts",
+      "line": 270,
+      "fields": [
+        "requireAccept",
+        "createdAt",
+        "completedAt"
+      ]
+    },
+    "ChannelRuntimeState": {
+      "file": "src/types/index.ts",
+      "line": 278,
+      "fields": [
+        "lastMessageAt",
+        "draftMessageCount"
+      ]
+    },
+    "CardAction": {
+      "file": "src/types/index.ts",
+      "line": 285,
+      "fields": [
+        "action",
+        "channelCode",
+        "open_id",
+        "formValue",
+        "chatId",
+        "messageId"
+      ]
+    },
+    "ApiResponse": {
+      "file": "src/types/index.ts",
+      "line": 298,
+      "fields": [
+        "code",
+        "message",
+        "data"
+      ]
+    },
+    "LLMRouteConfig": {
+      "file": "src/types/index.ts",
+      "line": 310,
+      "fields": [
+        "providerId",
+        "temperature",
+        "thinking"
+      ]
+    },
+    "LLMRoutesConfig": {
+      "file": "src/types/index.ts",
+      "line": 316,
+      "fields": [
+        "analyze",
+        "review"
+      ]
+    },
+    "ExperienceEntry": {
+      "file": "src/types/index.ts",
+      "line": 323,
+      "fields": [
+        "id",
+        "createdAt",
+        "source",
+        "rule",
+        "context"
+      ]
+    },
+    "ExperienceFile": {
+      "file": "src/types/index.ts",
+      "line": 331,
+      "fields": [
+        "entries",
+        "lastDreamAt"
+      ]
+    },
+    "DreamConfig": {
+      "file": "src/types/index.ts",
+      "line": 338,
+      "fields": [
+        "enabled"
+      ]
+    }
+  },
+  "modules": {
+    "root": {
+      "files": [
+        "src/app.ts",
+        "src/index.ts",
+        "src/server.ts"
+      ],
+      "exports": [
+        "App",
+        "getApp"
+      ],
+      "consumers": [
+        "src/channels/channel-factory.ts",
+        "src/channels/feishu-adapter.ts",
+        "src/channels/feishu-card-builder.ts",
+        "src/channels/feishu-client.ts",
+        "src/channels/feishu-signature.ts",
+        "src/channels/webhook.ts",
+        "src/llm/base-provider.ts",
+        "src/llm/deepseek-provider.ts",
+        "src/llm/llm-provider-factory.ts",
+        "src/llm/llm-queue.ts",
+        "src/llm/moonshot-provider.ts",
+        "src/llm/openai-provider.ts",
+        "src/services/agents-service.ts",
+        "src/services/analysis-validator.ts",
+        "src/services/card-callback-service.ts",
+        "src/services/channel-memory-service.ts",
+        "src/services/config-service.ts",
+        "src/services/context-service.ts",
+        "src/services/diff-detector.ts",
+        "src/services/draft-analysis-service.ts",
+        "src/services/draft-preview-service.ts",
+        "src/services/draft-raw-service.ts",
+        "src/services/draft-service.ts",
+        "src/services/dream-service.ts",
+        "src/services/experience-service.ts",
+        "src/services/git-manager.ts",
+        "src/services/handover-orchestrator.ts",
+        "src/services/handover-service.ts",
+        "src/services/reaction-service.ts",
+        "src/services/record-service.ts",
+        "src/services/soul-service.ts",
+        "src/utils/encryption.ts",
+        "src/utils/file-lock.ts",
+        "src/utils/init.ts",
+        "src/utils/logger.ts",
+        "src/utils/service.ts",
+        "src/utils/session-token.ts",
+        "src/web/admin-agent.ts",
+        "src/web/admin-auth.ts",
+        "src/web/admin-channels.ts",
+        "src/web/admin-handovers.ts",
+        "src/web/admin-llm.ts",
+        "src/web/admin-monitoring.ts",
+        "src/web/admin-platforms.ts",
+        "src/web/admin-template.ts",
+        "src/web/admin.ts",
+        "src/web/h5-api.ts",
+        "src/web/h5-auth.ts",
+        "src/web/h5-session-auth.ts",
+        "src/web/rate-limit.ts",
+        "src/web/sanitize-error.ts"
+      ]
+    },
+    "channels": {
+      "files": [
+        "src/channels/channel-factory.ts",
+        "src/channels/feishu-adapter.ts",
+        "src/channels/feishu-card-builder.ts",
+        "src/channels/feishu-client.ts",
+        "src/channels/feishu-signature.ts",
+        "src/channels/webhook.ts"
+      ],
+      "exports": [
+        "FeishuAdapter",
+        "buildHandoverCard",
+        "buildCompletionCard",
+        "FeishuClient",
+        "invalidateConfigCache",
+        "registerWebhookRoutes"
+      ],
+      "consumers": []
+    },
+    "llm": {
+      "files": [
+        "src/llm/base-provider.ts",
+        "src/llm/deepseek-provider.ts",
+        "src/llm/llm-provider-factory.ts",
+        "src/llm/llm-queue.ts",
+        "src/llm/moonshot-provider.ts",
+        "src/llm/openai-provider.ts",
+        "src/llm/semaphore.ts"
+      ],
+      "exports": [
+        "DeepSeekProvider",
+        "LLMQueue",
+        "MoonshotProvider",
+        "OpenAIProvider",
+        "Semaphore"
+      ],
+      "consumers": []
+    },
+    "services": {
+      "files": [
+        "src/services/agents-service.ts",
+        "src/services/analysis-validator.ts",
+        "src/services/card-callback-service.ts",
+        "src/services/channel-memory-service.ts",
+        "src/services/config-service.ts",
+        "src/services/context-service.ts",
+        "src/services/diff-detector.ts",
+        "src/services/draft-analysis-service.ts",
+        "src/services/draft-preview-service.ts",
+        "src/services/draft-raw-service.ts",
+        "src/services/draft-service.ts",
+        "src/services/dream-service.ts",
+        "src/services/experience-service.ts",
+        "src/services/git-manager.ts",
+        "src/services/handover-orchestrator.ts",
+        "src/services/handover-service.ts",
+        "src/services/reaction-service.ts",
+        "src/services/record-service.ts",
+        "src/services/soul-service.ts"
+      ],
+      "exports": [
+        "setAutoCommit",
+        "buildAgentsPrompt",
+        "getDefaultAgents",
+        "validateAnalysis",
+        "validateAnalysisArray",
+        "setAutoCommit",
+        "extractMemoryForPrompt",
+        "getDefaultTemplate",
+        "getDefaultSystemPrompt",
+        "PreviousHandover",
+        "DiffEntry",
+        "detectDiffs",
+        "setAutoCommit",
+        "setAutoCommit",
+        "setAutoCommit",
+        "setAutoCommit",
+        "parseDraftSections",
+        "setAutoCommit",
+        "DreamCandidate",
+        "DreamReport",
+        "calculateModificationRate",
+        "setAutoCommit",
+        "buildExperiencePrompt",
+        "GitManager",
+        "setAutoCommit",
+        "formatDate",
+        "formatYearMonth",
+        "ReactionEmoji",
+        "setDraftUpdateNotifier",
+        "setAutoCommit",
+        "buildSoulPrompt",
+        "getDefaultSoul"
+      ],
+      "consumers": []
+    },
+    "types": {
+      "files": [
+        "src/types/index.ts"
+      ],
+      "exports": [
+        "UserInfo",
+        "ContentType",
+        "TextContent",
+        "ImageContent",
+        "AudioContent",
+        "UnknownContent",
+        "Content",
+        "Message",
+        "CommandType",
+        "Command",
+        "ChannelSettings",
+        "ChannelConfig",
+        "FeishuPlatformConfig",
+        "PlatformConfig",
+        "ChannelsConfig",
+        "MessageContent",
+        "CardContent",
+        "CardElement",
+        "ChannelAdapter",
+        "AnalyzeTextParams",
+        "AnalyzeImageParams",
+        "TranscribeParams",
+        "GenerateHandoverParams",
+        "AnalyzeResult",
+        "LLMProvider",
+        "LLMProviderConfig",
+        "LLMProvidersConfig",
+        "LLMTask",
+        "DraftRecord",
+        "RawRecord",
+        "AnalysisItem",
+        "AnalysisFile",
+        "CompletenessCheckResult",
+        "PendingHandover",
+        "HandoverMeta",
+        "ChannelRuntimeState",
+        "CardAction",
+        "ApiResponse",
+        "ThinkingMode",
+        "LLMRouteConfig",
+        "LLMRoutesConfig",
+        "ExperienceEntry",
+        "ExperienceFile",
+        "DreamConfig"
+      ],
+      "consumers": []
+    },
+    "utils": {
+      "files": [
+        "src/utils/data-dir.ts",
+        "src/utils/encryption.ts",
+        "src/utils/file-lock.ts",
+        "src/utils/init.ts",
+        "src/utils/logger.ts",
+        "src/utils/service.ts",
+        "src/utils/session-token.ts"
+      ],
+      "exports": [
+        "getDataDir",
+        "invalidateKeyCache",
+        "encryptSync",
+        "decryptSync",
+        "releaseLock"
+      ],
+      "consumers": []
+    },
+    "web": {
+      "files": [
+        "src/web/admin-agent.ts",
+        "src/web/admin-auth.ts",
+        "src/web/admin-channels.ts",
+        "src/web/admin-handovers.ts",
+        "src/web/admin-llm.ts",
+        "src/web/admin-monitoring.ts",
+        "src/web/admin-platforms.ts",
+        "src/web/admin-template.ts",
+        "src/web/admin.ts",
+        "src/web/draft-events.ts",
+        "src/web/h5-api.ts",
+        "src/web/h5-auth.ts",
+        "src/web/h5-session-auth.ts",
+        "src/web/rate-limit.ts",
+        "src/web/sanitize-error.ts",
+        "src/web/security-headers.ts"
+      ],
+      "exports": [
+        "registerAgentRoutes",
+        "adminAuthMiddleware",
+        "registerChannelRoutes",
+        "registerHandoverRoutes",
+        "registerLLMRoutes",
+        "registerMonitoringRoutes",
+        "registerPlatformRoutes",
+        "registerTemplateRoutes",
+        "registerAdminRoutes",
+        "notifyDraftUpdate",
+        "onDraftUpdate",
+        "offDraftUpdate",
+        "registerH5Routes",
+        "registerH5AuthRoutes",
+        "rateLimit",
+        "sanitizeError",
+        "securityHeaders"
+      ],
+      "consumers": []
+    }
+  },
+  "conventions": {
+    "violations": [],
+    "coverage": {
+      "no-raw-env": "59/59",
+      "naming-convention": "pending-renaming"
+    }
+  },
+  "wiring": {
+    "autoCommitCallbacks": [
+      {
+        "service": "record-service",
+        "register": "setAutoCommit",
+        "consumer": "app"
+      },
+      {
+        "service": "draft-raw-service",
+        "register": "setAutoCommit",
+        "consumer": "app"
+      },
+      {
+        "service": "draft-analysis-service",
+        "register": "setAutoCommit",
+        "consumer": "app"
+      },
+      {
+        "service": "draft-preview-service",
+        "register": "setAutoCommit",
+        "consumer": "app"
+      },
+      {
+        "service": "handover-service",
+        "register": "setAutoCommit",
+        "consumer": "app"
+      },
+      {
+        "service": "channel-memory-service",
+        "register": "setAutoCommit",
+        "consumer": "app"
+      },
+      {
+        "service": "experience-service",
+        "register": "setAutoCommit",
+        "consumer": "app"
+      }
+    ],
+    "eventBus": [
+      {
+        "source": "h5-api.ts",
+        "event": "notifyDraftUpdate",
+        "listeners": [
+          "draft-events.ts"
+        ]
+      }
+    ]
+  }
+}
