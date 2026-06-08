@@ -23,11 +23,12 @@
 | `*-client.ts` | 低级 API 客户端 | 禁止引入第三方 HTTP 库 |
 | `*-middleware.ts` | Express 中间件 | 禁止业务逻辑（纯横切关注点） |
 | `*-utils.ts` / `utils/*.ts` | 纯工具函数（无状态） | 禁止 import services/ |
+| `*-events.ts` | 事件总线/发布订阅（无 Express） | 如 `draft-events.ts` |
 
-**违规案例**：
-- `card-callback-service.ts` 含 HTTP 路由逻辑 → 应重命名为 `card-callback-api.ts`
-- `reaction-service.ts` 含 HTTP 路由逻辑 → 应重命名为 `reaction-api.ts`
-- `h5-auth.ts` 含路由 → 应带 `-api` 或 `-middleware` 后缀
+**命名示例**（符合约定）：
+- `card-callback-service.ts` → `src/services/` 下的纯逻辑服务（处理卡片动作回调），命名正确
+- `reaction-service.ts` → `src/services/` 下的纯逻辑服务（添加表情反应），命名正确
+- `h5-auth.ts` → 含路由逻辑，建议重命名为 `h5-auth-api.ts`（低优先级，非必须）
 
 ---
 

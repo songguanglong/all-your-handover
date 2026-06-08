@@ -74,10 +74,13 @@ all-your-handover/
 | `*-utils.ts` / `*.ts` 在 `utils/` | 纯工具函数（无状态） | `data-dir.ts` |
 | `*-middleware.ts` | Express 中间件 | `admin-auth.ts`, `rate-limit.ts` |
 
-**待规范化的现有文件**：
-- `card-callback-service.ts`：含 HTTP 处理逻辑，应重命名为 `card-callback-api.ts`。
-- `reaction-service.ts`：确认是 service 还是 api，统一命名。
-- `h5-auth.ts` 与 `h5-session-auth.ts`：前者含路由逻辑应带 `-api`，后者是中间件应带 `-middleware`。
+**已验证的现有文件**（命名正确）：
+- `card-callback-service.ts`（`src/services/`）：纯逻辑服务（处理卡片动作），命名符合 `*-service.ts` 约定。
+- `reaction-service.ts`（`src/services/`）：纯逻辑服务（添加表情反应），命名符合 `*-service.ts` 约定。
+
+**可选规范化**（低优先级）：
+- `h5-auth.ts`（`src/web/`）：含路由逻辑，可考虑重命名为 `h5-auth-api.ts`。
+- `h5-session-auth.ts`（`src/web/`）：中间件逻辑，可考虑重命名为 `h5-session-auth-middleware.ts`。
 
 ### 3.2 ESLint 自定义规则（新增）
 
