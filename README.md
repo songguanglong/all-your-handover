@@ -256,6 +256,7 @@ npx vitest run test/some-file.test.ts   # 单个测试文件
 ## 文档
 
 - [架构范式](PARADIGM.md)
+- [业务流流程图](docs/FLOWS.md)
 - [开发指南](CLAUDE.md)
 - [编码规则](docs/AI_RULES.md)
 
