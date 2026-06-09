@@ -1,16 +1,21 @@
+import fs from 'fs/promises';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { logger } from '../utils/logger';
 
 export class GitManager {
-  private repo: SimpleGit;
+  private repo: SimpleGit | null = null;
+  private dataPath: string;
   private commitTimer: NodeJS.Timeout | null = null;
   private pendingMessages: string[] = [];
 
   constructor(dataPath: string) {
-    this.repo = simpleGit(dataPath);
+    this.dataPath = dataPath;
   }
 
   async init(): Promise<void> {
+    // Ensure directory exists before initializing simple-git
+    await fs.mkdir(this.dataPath, { recursive: true });
+    this.repo = simpleGit(this.dataPath);
     if (!await this.repo.checkIsRepo()) {
       await this.repo.init();
       await this.repo.addConfig('user.name', 'All Your Handover');
@@ -26,12 +31,12 @@ export class GitManager {
       this.pendingMessages = [];
       this.commitTimer = null;
       try {
-        await this.repo.add('.');
+        await this.repo!.add('.');
         const msg = messages.length === 1
           ? messages[0]
           : `${messages[0]} 等 ${messages.length} 条操作`;
         try {
-          await this.repo.commit(msg);
+          await this.repo!.commit(msg);
         } catch {
           // No changes to commit — not an error
         }
@@ -51,12 +56,12 @@ export class GitManager {
     const messages = [...this.pendingMessages];
     this.pendingMessages = [];
     try {
-      await this.repo.add('.');
+      await this.repo!.add('.');
       const msg = messages.length === 1
         ? messages[0]
         : `${messages[0]} 等 ${messages.length} 条操作`;
       try {
-        await this.repo.commit(msg);
+        await this.repo!.commit(msg);
       } catch {
         // No changes to commit
       }

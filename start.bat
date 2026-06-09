@@ -1,15 +1,31 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
-REM 设置数据目录为程序同级目录下的 data 文件夹
-set DATA_DIR=%~dp0data
+chcp 65001 >nul
+
+echo [All Your Handover] Starting...
+
+set SCRIPTDIR=%~dp0
+set NODEEXE=%SCRIPTDIR%node.exe
+set DATA_DIR=%SCRIPTDIR%data
 set PORT=3000
 
-REM 启动服务
-echo 正在启动 All Your Handover...
-echo 数据目录: %DATA_DIR%
-echo 访问地址: http://localhost:%PORT%/admin
+if not exist "%NODEEXE%" (
+  echo [ERROR] node.exe not found in %SCRIPTDIR%
+  echo Please make sure node.exe is in the same folder as this script.
+  pause
+  exit /b 1
+)
 
-"%~dp0node.exe" "%~dp0dist\index.js"
+if not exist "%DATA_DIR%" (
+  echo [INFO] Creating data directory: %DATA_DIR%
+  mkdir "%DATA_DIR%"
+)
+
+echo Data directory: %DATA_DIR%
+echo Admin URL: http://localhost:%PORT%/admin
+echo.
+
+"%NODEEXE%" "%SCRIPTDIR%dist\index.js"
 
 pause
