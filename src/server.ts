@@ -59,6 +59,11 @@ export async function startServer(port: number): Promise<http.Server> {
     res.json({ status: 'ok', version: process.env.npm_package_version || '0.1.0' });
   });
 
+  // Redirect root to admin dashboard
+  app.get('/', (_req, res) => {
+    res.redirect('/admin');
+  });
+
   return new Promise((resolve) => {
     const server = app.listen(port, () => {
       logger.info(`All Your Handover 已启动: http://localhost:${port}`);
