@@ -2,7 +2,7 @@ import { App } from './app';
 import { startServer } from './server';
 import { logger } from './utils/logger';
 import { registerService, unregisterService } from './utils/service';
-import type http from 'http';
+import { setDataDir } from './utils/data-dir';
 
 function parseArgs(args: string[]): { port: number; dataDir: string; command?: string } {
   let port = parseInt(process.env.PORT || '3000', 10);
@@ -45,7 +45,7 @@ async function main() {
     return;
   }
 
-  process.env.DATA_DIR = dataDir;
+  setDataDir(dataDir);
 
   const app = new App();
   await app.initialize();

@@ -208,19 +208,7 @@ export interface LLMTask {
   thinkingMode?: ThinkingMode;
 }
 
-// --- Draft (legacy, used by draft-service.ts) ---
-
-export interface DraftRecord {
-  messageId: string;
-  type: ContentType;
-  sender: UserInfo;
-  rawContent: string;
-  analysis: AnalyzeResult | null;
-  status: 'pending_analysis' | 'analyzed';
-  timestamp: Date;
-}
-
-// --- Draft Storage (new Harness structure) ---
+// --- Draft Storage ---
 
 export interface RawRecord {
   id: string;

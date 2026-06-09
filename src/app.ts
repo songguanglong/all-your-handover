@@ -5,7 +5,6 @@ import { LLMQueue } from './llm/llm-queue';
 import { initDirectories } from './utils/init';
 import { logger } from './utils/logger';
 import { getDataDir } from './utils/data-dir';
-import { setAutoCommit as setDraftAutoCommit } from './services/draft-service';
 import { setAutoCommit as setDraftRawAutoCommit } from './services/draft-raw-service';
 import { setAutoCommit as setDraftAnalysisAutoCommit } from './services/draft-analysis-service';
 import { setAutoCommit as setDraftPreviewAutoCommit } from './services/draft-preview-service';
@@ -43,7 +42,6 @@ export class App {
 
     // Wire up auto-commit to GitManager
     const gitAutoCommit = this.git.autoCommit.bind(this.git);
-    setDraftAutoCommit(gitAutoCommit);
     setDraftRawAutoCommit(gitAutoCommit);
     setDraftAnalysisAutoCommit(gitAutoCommit);
     setDraftPreviewAutoCommit(gitAutoCommit);
