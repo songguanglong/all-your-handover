@@ -2,18 +2,92 @@
 
 轻量级本地部署的酒店交接班工具 — 数据自有，交接由你做主
 
-## 核心理念
+## 一句话介绍
 
-- **数据自有**：所有数据存储在客户本地，Markdown/JSON 文件格式
-- **一键部署**：Docker 部署或源码运行，零数据库依赖
-- **零配置启动**：无需预设员工表、班次表，开箱即用
-- **群聊交互**：飞书群聊即入口，`@自己 交班` 即可发起
-- **Agent 智能系统**：可设定人设、积累经验、自我进化
+把飞书群聊变成交接班系统：员工在群里发消息，AI 自动整理成交接记录，H5 页面一键交班/接班。
+
+**数据全部存在你电脑上**，不用联网数据库，换个电脑把文件夹拷走就行。
+
+---
+
+## 快速开始（Windows，5 分钟）
+
+> 如果你用的是 Linux 或 Mac，或者希望用 Docker 部署，请看下面的"其他部署方式"。
+
+### 第一步：下载程序
+
+去 [GitHub Releases](https://github.com/songguanglong/all-your-handover/releases) 下载最新版的 `all-your-handover-win.zip`，解压到任意文件夹。
+
+### 第二步：启动
+
+双击 `all-your-handover.exe`，看到命令行窗口显示 `服务已启动，端口 3000` 即可。
+
+> 第一次启动会自动创建数据文件夹 `data/`，里面存着所有配置和交接记录。
+
+### 第三步：打开管理后台
+
+浏览器访问 `http://localhost:3000/admin`
+
+1. **添加 LLM**（AI 服务）：填 DeepSeek / OpenAI / Moonshot 的 API Key，选一个默认模型
+2. **添加渠道**（飞书群）：填飞书群的 chatId 和群名称
+3. **去飞书开放平台** 把 Webhook 地址 `http://你的服务器IP:3000/webhook/feishu` 配好
+
+完事。群里发 `@自己 交班` 就能用了。
+
+### 常用操作
+
+| 操作 | 怎么做 |
+|------|--------|
+| 开机自动启动 | 双击 `install-service.bat`（以管理员身份运行），之后服务随 Windows 自动启动 |
+| 停止服务 | `nssm stop AllYourHandover` |
+| 重启服务 | `nssm restart AllYourHandover` |
+| 卸载服务 | 双击 `uninstall-service.bat` |
+| 备份数据 | 把 `data/` 文件夹复制一份就行 |
+| 改端口 | 编辑同目录下的 `.env.win` 文件，改 `PORT=3000` 那一行 |
+
+---
+
+## 其他部署方式
+
+### 方式二：Docker（推荐，如果你有人懂 Docker）
+
+```bash
+git clone https://github.com/songguanglong/all-your-handover.git
+cd all-your-handover
+docker compose up -d
+```
+
+数据存在 `./data`，端口 3000。就这两条命令。
+
+### 方式三：源码运行（开发者用）
+
+需要安装 Node.js 18+。
+
+```bash
+git clone https://github.com/songguanglong/all-your-handover.git
+cd all-your-handover
+npm install
+npm run build
+npm start
+```
+
+---
+
+## 飞书配置
+
+1. 登录 [飞书开放平台](https://open.feishu.cn/)，创建"企业自建应用"
+2. 添加"机器人"能力
+3. 事件订阅 URL 填：`https://你的服务器IP:3000/webhook/feishu`
+4. 订阅事件选：`im.message.receive_v1`
+5. 开启"接收群聊中所有消息"
+6. 把 App ID 和 App Secret 填到管理后台的"平台配置"里
+
+---
 
 ## 功能特性
 
 ### 交接班流程
-- 群聊消息实时记录，LLM 自动分析分类
+- 群聊消息实时记录，AI 自动分析分类
 - 草稿实时预览，支持 H5 页面编辑
 - 两种交接模式：需接班人确认 / 交班人自行确认
 - 消息撤回自动标记，交接归档后草稿自动清理
@@ -37,177 +111,11 @@
 - 草稿查看与编辑
 - 一键交班 / 接班 / 打回
 
-## 安装部署
+---
 
-### 访问地址
+## 数据与备份
 
-| 页面 | 地址 | 说明 |
-|------|------|------|
-| 管理后台 | `http://localhost:3000/admin` | Web 后台管理 |
-| H5 移动端 | `http://localhost:3000/h5?code={渠道code}` | 草稿查看/编辑/交班，需携带渠道参数 |
-| 健康检查 | `http://localhost:3000/health` | 服务状态 |
-
-### 方式一：Docker 部署（推荐）
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/songguanglong/all-your-handover.git
-cd all-your-handover
-
-# 2. 构建并启动
-docker compose up -d
-
-# 3. 查看日志
-docker compose logs -f
-```
-
-服务启动后访问 `http://localhost:3000/admin` 进入管理后台。
-
-**配置说明**：
-- 数据目录挂载到宿主机 `./data`，容器重启不丢失数据
-- 端口默认 3000，可在 `docker-compose.yml` 中修改
-- 首次启动自动创建目录结构和默认配置文件
-
-**环境变量**（在 `docker-compose.yml` 中配置）：
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PORT` | `3000` | 服务监听端口 |
-| `DATA_DIR` | `/data` | 数据存储目录 |
-| `ENCRYPTION_KEY` | 自动生成 | API Key 等敏感配置的加密密钥，不设置则自动生成并保存到 `data/config/.encryption-key` |
-| `ADMIN_TOKEN` | 无 | 管理后台认证 Token，生产环境必须设置，不设置则无认证保护 |
-
-> **重要**：
-> - 如果需要跨重启保留加密密钥，请设置 `ENCRYPTION_KEY` 环境变量。否则容器重建后自动生成的密钥会变化，导致已加密的 API Key 无法解密。
-> - **生产环境必须设置 `ADMIN_TOKEN`**，否则管理后台接口无认证保护。
-
-### 方式二：源码运行
-
-**前置要求**：Node.js 18+
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/songguanglong/all-your-handover.git
-cd all-your-handover
-
-# 2. 安装依赖
-npm install
-
-# 3. 开发模式（热重载）
-npm run dev
-
-# 4. 生产构建
-npm run build
-
-# 5. 生产运行
-npm start
-```
-
-**CLI 参数**：
-
-```bash
-# 指定端口
-node dist/index.js --port 8080
-
-# 指定数据目录
-node dist/index.js --data /var/lib/handover
-
-# 卸载系统服务（Linux）
-node dist/index.js uninstall
-```
-
-**环境变量**：
-
-```bash
-# 复制模板并修改
-cp .env.example .env.local
-
-# 编辑 .env.local
-PORT=3000
-DATA_DIR=./data
-ENCRYPTION_KEY=your-encryption-key-here  # 可选
-```
-
-### 方式三：Linux 系统服务
-
-```bash
-# 安装为 systemd 服务（需要 sudo）
-sudo node dist/index.js --data /var/lib/handover
-
-# 服务会自动注册为 systemd 服务
-# 日志输出到 /var/log/all-your-handover/
-
-# 卸载服务
-node dist/index.js uninstall
-```
-
-### 方式四：Windows Server 服务
-
-**前置要求**：Windows Server 2012+，管理员权限，[NSSM](https://nssm.cc/download)
-
-```cmd
-:: 1. 构建应用
-npm install
-npm run build
-
-:: 2. 下载 nssm.exe 放入 scripts/ 目录
-::    https://nssm.cc/download
-
-:: 3. 以管理员身份运行安装脚本
-scripts\install-service.bat
-
-:: 4. 编辑配置（可选，修改后需重启服务）
-notepad .env.win
-nssm restart AllYourHandover
-```
-
-**卸载服务**：
-
-```cmd
-:: 以管理员身份运行（数据保留）
-scripts\uninstall-service.bat
-```
-
-**服务管理**：
-
-| 命令 | 说明 |
-|------|------|
-| `nssm start AllYourHandover` | 启动服务 |
-| `nssm stop AllYourHandover` | 停止服务 |
-| `nssm restart AllYourHandover` | 重启服务 |
-| `nssm status AllYourHandover` | 查看状态 |
-| `nssm edit AllYourHandover` | 编辑服务配置（GUI） |
-
-### 首次使用
-
-1. **启动服务**后访问 `http://localhost:3000/admin`
-2. **初始化向导**：按提示添加 LLM Provider 和飞书应用配置
-3. **创建渠道**：填写飞书群 chatId 和名称
-4. **配置飞书 Webhook**：将 Webhook URL 配置到飞书开放平台
-5. **在群聊中测试**：发送 `@自己 交班` 触发交班流程
-
-### 飞书应用配置
-
-1. 登录[飞书开放平台](https://open.feishu.cn/)创建企业自建应用
-2. 添加机器人能力
-3. 配置事件订阅 URL：`https://你的域名:3000/webhook/feishu`
-4. 订阅事件：`im.message.receive_v1`（接收消息）
-5. 开启"接收群聊中所有消息"（如需 messageFilter=all）
-6. 在 Web 后台 → 平台配置 中填写 App ID 和 App Secret
-
-### 数据备份
-
-所有数据存储在 `DATA_DIR` 目录下，备份方式：
-
-```bash
-# 直接复制数据目录
-cp -r ./data ./data-backup-$(date +%Y%m%d)
-
-# 或利用内置 Git 版本控制
-cd ./data && git log --oneline -10
-```
-
-数据目录结构：
+所有数据存在 `data/` 文件夹里：
 
 ```
 data/
@@ -220,45 +128,63 @@ data/
 │   │   ├── raw.jsonl           # 原始消息记录
 │   │   ├── analysis.json        # LLM 分析结果
 │   │   ├── preview.md           # 交接预览
-│   │   ├── preview-items.json   # 条目跟踪
-│   │   └── pending.json         # 待交接状态
+│   │   └── preview-items.json   # 条目跟踪
 │   ├── handovers/YYYY-MM/       # 交接记录归档
 │   ├── soul.md                 # 灵魂人设
 │   ├── agents.md               # 行为规则
 │   ├── experience.json         # 经验规则
 │   ├── channel-memory.md        # 渠道记忆
 │   ├── template.md             # 交接模板
-│   ├── system-prompt.txt        # 系统 Prompt
-│   └── dreaming/                # 梦境反思数据
+│   └── system-prompt.txt        # 系统 Prompt
 └── logs/app.log
 ```
+
+**备份**：直接把 `data/` 文件夹复制一份就行。系统内置 Git 自动提交，所有修改都有版本记录。
+
+---
+
+## 安全提醒
+
+- 生产环境必须设置 `ADMIN_TOKEN` 环境变量，否则管理后台无密码保护
+- 如需跨设备迁移，请设置 `ENCRYPTION_KEY` 环境变量，否则换机器后加密的 API Key 无法解密
+
+---
+
+## 访问地址
+
+| 页面 | 地址 | 说明 |
+|------|------|------|
+| 管理后台 | `http://localhost:3000/admin` | Web 后台管理 |
+| H5 移动端 | `http://localhost:3000/h5?code={渠道code}` | 草稿查看/编辑/交班，需携带渠道参数 |
+| 健康检查 | `http://localhost:3000/health` | 服务状态 |
+
+---
 
 ## 开发
 
 ```bash
 npm install          # 安装依赖
-npm run dev          # 开发模式（tsx watch）
+npm run dev          # 开发模式（热重载）
 npm run build        # 编译 TypeScript
 npm test             # 运行测试
-npm run test:watch   # 测试监听模式
 npm run lint         # ESLint 检查
-npx vitest run test/some-file.test.ts   # 单个测试文件
 ```
 
-## 技术栈
+打包独立可执行文件：
 
-- TypeScript + Node.js + Express（单进程，无数据库）
-- 纯 HTML + 原生 JS（管理后台 + H5 页面，无构建工具）
-- Git 内置版本控制（自动提交数据变更，30s 防抖）
-- AES-256-GCM 加密（API Key、App Secret 等敏感配置）
-- 飞书 SDK 自实现（无第三方 SDK 依赖）
+```bash
+npm run build
+npm run pkg          # 输出到 dist/all-your-handover.exe 和 dist/all-your-handover-linux
+```
+
+---
 
 ## 文档
 
-- [架构范式](PARADIGM.md)
-- [业务流流程图](docs/FLOWS.md)
-- [开发指南](CLAUDE.md)
-- [编码规则](docs/AI_RULES.md)
+- [架构范式](PARADIGM.md) — 代码架构说明
+- [业务流流程图](docs/FLOWS.md) — 数据流可视化
+- [开发指南](CLAUDE.md) — AI 协作者编码规范
+- [编码规则](docs/AI_RULES.md) — 项目内部规范
 
 ## License
 
