@@ -51,7 +51,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://gitee.com/songguanglong/all-your-handover.git
+git clone https://github.com/songguanglong/all-your-handover.git
 cd all-your-handover
 
 # 2. 构建并启动
@@ -87,7 +87,7 @@ docker compose logs -f
 
 ```bash
 # 1. 克隆仓库
-git clone https://gitee.com/songguanglong/all-your-handover.git
+git clone https://github.com/songguanglong/all-your-handover.git
 cd all-your-handover
 
 # 2. 安装依赖
@@ -255,8 +255,9 @@ npx vitest run test/some-file.test.ts   # 单个测试文件
 
 ## 文档
 
-- [产品设计文档](docs/all-your-handover.md)
+- [架构范式](PARADIGM.md)
 - [开发指南](CLAUDE.md)
+- [编码规则](docs/AI_RULES.md)
 
 ## License
 
