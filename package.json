@@ -1,6 +1,6 @@
 {
   "name": "all-your-handover",
-  "version": "0.2.1",
+  "version": "0.1.0",
   "description": "轻量级本地部署的酒店交接班工具 — 数据自有，交接由你做主",
   "main": "dist/index.js",
   "scripts": {
@@ -35,6 +35,8 @@
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.56.0",
+    "nexe": "^5.0.0-beta.4",
+    "pkg": "^5.8.1",
     "supertest": "^7.2.2",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",
