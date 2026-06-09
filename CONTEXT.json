@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "0.2.0",
+    "version": "0.2.1",
     "techStack": [
       "typescript",
       "node",
@@ -17,11 +17,12 @@
       "start": "node dist/index.js",
       "test": "vitest run",
       "test:watch": "vitest",
-      "lint": "eslint src/",
+      "lint": "eslint --rulesdir eslint-rules/ src/",
+      "docs:update": "node scripts/update-context.js",
       "pkg": "pkg package.json -t node18-linux-x64,node18-win-x64 -o dist/all-your-handover"
     },
-    "generatedAt": "2026-06-08T15:44:11.235Z",
-    "sourceHash": "141f58151e62e039"
+    "generatedAt": "2026-06-09T03:25:36.647Z",
+    "sourceHash": "eefa9ef2367f8f8f"
   },
   "endpoints": {
     "web": [

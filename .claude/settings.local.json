@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)"
+    ]
+  },
+  "hooks": {
+    "file-content-change": [
+      "npm run docs:update"
+    ],
+    "post-task": [
+      "echo '==== 任务完成检查清单 ====' && echo '架构变更 → 更新 PARADIGM.md + 新增 docs/DECISIONS/ADR' && echo '新增 API  → npm run docs:update 已自动更新 CONTEXT.json' && echo '新编码约定 → 更新 docs/AI_RULES.md + eslint-rules/' && echo '业务流变更 → 更新 docs/FLOWS.md'"
+    ]
+  }
+}

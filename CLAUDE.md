@@ -37,15 +37,23 @@ See `PARADIGM.md` for full architecture, data flow, and module boundaries.
 - **Auto-commit wiring**: Services export `setAutoCommit(fn)`, App calls them in `initialize()`. No direct App import from services.
 - **Model routing**: Use `getForTask('analyze')` for analysis, `getForTask('review')` for review. Both fall back to `getDefault()`.
 
-## Documentation Layers
+## Documentation Layers (按需读取)
 
 ```
 README.md          → 用户面向（安装、功能）
 PARADIGM.md        → 架构范式（详细数据流、模块边界）
-docs/AI_RULES.md   → 编码规则（风格、禁止、优先模式）
+docs/FLOWS.md      → 业务流程图（代码逻辑 vs 大模型处理的可视化）
+docs/AI_RULES.md   → 编码规则（风格、禁止、优先模式、ESLint 规则）
 docs/DECISIONS/    → 架构决策记录（ADRs）
-CONTEXT.json       → 机器可读项目索引（从代码自动生成）
+CONTEXT.json       → 机器可读项目索引（从代码自动生成，无需手动维护）
 ```
+
+**按需读取指引**（agent 根据当前任务类型选择读取）：
+- **架构设计 / 新增模块** → 先读 `PARADIGM.md`，再读相关 `docs/DECISIONS/`
+- **编码 / 接口修改** → 先读 `docs/AI_RULES.md`，再读 `docs/FLOWS.md` 定位业务流
+- **理解业务逻辑** → 读 `docs/FLOWS.md` 定位相关流程图
+- **新增 API 端点** → 编码完成后运行 `npm run docs:update` 更新 `CONTEXT.json`
+- **引入新全局约定** → 更新 `docs/AI_RULES.md` + `eslint-rules/`
 
 See `PARADIGM.md` and `docs/AI_RULES.md` for detailed conventions.
 
