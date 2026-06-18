@@ -5,6 +5,16 @@ import type { ChannelsConfig, ChannelConfig, LLMProvidersConfig, LLMProviderConf
 import { getDataDir } from '../utils/data-dir';
 import { logger } from '../utils/logger';
 
+let autoCommitFn: (message: string) => Promise<void> = () => Promise.resolve();
+
+export function setAutoCommit(fn: (message: string) => Promise<void>): void {
+  autoCommitFn = fn;
+}
+
+function autoCommit(message: string): void {
+  autoCommitFn(message).catch(() => {});
+}
+
 async function atomicWriteFile(filePath: string, data: string): Promise<void> {
   const dir = path.dirname(filePath);
   const tmpFile = path.join(dir, `.tmp_${crypto.randomBytes(8).toString('hex')}`);
@@ -82,6 +92,7 @@ export async function loadChannelsConfig(): Promise<ChannelsConfig> {
 
 export async function saveChannelsConfig(config: ChannelsConfig): Promise<void> {
   await atomicWriteFile(channelsConfigPath(), JSON.stringify(config, null, 2));
+  autoCommit('[config] channels updated');
 }
 
 export async function findChannelCodeByChatId(chatId: string): Promise<string | null> {
@@ -111,6 +122,7 @@ export async function loadLLMProvidersConfig(): Promise<LLMProvidersConfig> {
 
 export async function saveLLMProvidersConfig(config: LLMProvidersConfig): Promise<void> {
   await atomicWriteFile(llmProvidersConfigPath(), JSON.stringify(config, null, 2));
+  autoCommit('[config] llm-providers updated');
 }
 
 export async function getDefaultProviderConfig(): Promise<LLMProviderConfig | null> {
@@ -135,6 +147,7 @@ export async function saveTemplate(channelCode: string, content: string): Promis
   validateChannelCode(channelCode);
   const templatePath = path.join(getDataDir(), `channels/${channelCode}/template.md`);
   await atomicWriteFile(templatePath, content);
+  autoCommit(`[config] template updated: ${channelCode}`);
 }
 
 export function getDefaultTemplate(): string {
@@ -158,6 +171,7 @@ export async function getSystemPrompt(channelCode: string): Promise<string> {
 
 export async function saveSystemPrompt(channelCode: string, content: string): Promise<void> {
   await atomicWriteFile(systemPromptPath(channelCode), content);
+  autoCommit(`[config] system-prompt updated: ${channelCode}`);
 }
 
 export function getDefaultSystemPrompt(): string {

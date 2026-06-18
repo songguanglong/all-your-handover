@@ -14,6 +14,7 @@ import { setAutoCommit as setAgentsAutoCommit } from './services/agents-service'
 import { setAutoCommit as setChannelMemoryAutoCommit } from './services/channel-memory-service';
 import { setAutoCommit as setExperienceAutoCommit } from './services/experience-service';
 import { setAutoCommit as setDreamAutoCommit } from './services/dream-service';
+import { setAutoCommit as setConfigAutoCommit } from './services/config-service';
 import { setDraftUpdateNotifier as setRecordNotifier } from './services/record-service';
 import { notifyDraftUpdate } from './web/draft-events';
 
@@ -51,6 +52,7 @@ export class App {
     setChannelMemoryAutoCommit(gitAutoCommit);
     setExperienceAutoCommit(gitAutoCommit);
     setDreamAutoCommit(gitAutoCommit);
+    setConfigAutoCommit(gitAutoCommit);
 
     // Wire draft update notifier to SSE event bus
     setRecordNotifier(notifyDraftUpdate);

@@ -4,6 +4,7 @@ import path from 'path';
 import { loadChannelsConfig, loadLLMProvidersConfig } from '../services/config-service';
 import { getApp } from '../app';
 import { logger } from '../utils/logger';
+import { getVersion } from '../utils/version';
 
 import { getDataDir } from '../utils/data-dir';
 import { sanitizeError } from './sanitize-error';
@@ -22,7 +23,7 @@ export function registerMonitoringRoutes(router: import('express').Router, prefi
         data: {
           status: 'ok',
           uptime: process.uptime(),
-          version: process.env.npm_package_version || '0.1.0',
+          version: getVersion(),
           firstRun,
           channelCount: channelsConfig.channels.filter(ch => ch.isEnabled).length,
           providerCount: llmConfig.providers.filter(p => p.isEnabled).length,

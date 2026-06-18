@@ -10,3 +10,8 @@ data/
 .DS_Store
 thumbs.db
 scripts/nssm.exe
+
+# Release build artifacts
+release-temp/
+release-build/
+all-your-handover-v*-win.zip
