@@ -1,6 +1,19 @@
 import fs from 'fs/promises';
+import path from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { logger } from '../utils/logger';
+
+const GITIGNORE_CONTENT = [
+  '# 自动生成 - 切勿手动修改',
+  '',
+  '# 加密信封密钥（envelope key）— 与加密的 API key/平台密钥同处会导致泄露失去意义',
+  'config/.encryption-key',
+  '',
+  '# 原子写临时文件',
+  '.tmp_*',
+  '**/.tmp_*',
+  '',
+].join('\n');
 
 export class GitManager {
   private repo: SimpleGit | null = null;
@@ -15,6 +28,7 @@ export class GitManager {
 
   async init(): Promise<void> {
     await fs.mkdir(this.dataPath, { recursive: true });
+    await this.ensureGitignore();
     this.repo = simpleGit(this.dataPath);
     try {
       if (!await this.repo.checkIsRepo()) {
@@ -30,6 +44,16 @@ export class GitManager {
         return;
       }
       throw err;
+    }
+  }
+
+  /** 确保数据目录有 .gitignore，避免敏感文件入库 */
+  private async ensureGitignore(): Promise<void> {
+    const gitignorePath = path.join(this.dataPath, '.gitignore');
+    try {
+      await fs.access(gitignorePath);
+    } catch {
+      await fs.writeFile(gitignorePath, GITIGNORE_CONTENT, 'utf-8');
     }
   }
 

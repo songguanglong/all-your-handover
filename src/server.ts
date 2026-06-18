@@ -10,6 +10,7 @@ import { registerH5Routes } from './web/h5-api';
 import { registerH5AuthRoutes } from './web/h5-auth';
 import { h5OptionalAuth } from './web/h5-session-auth';
 import { logger } from './utils/logger';
+import { getVersion } from './utils/version';
 
 declare global {
   namespace Express {
@@ -56,7 +57,7 @@ export async function startServer(port: number): Promise<http.Server> {
 
   // Health check
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', version: process.env.npm_package_version || '0.1.0' });
+    res.json({ status: 'ok', version: getVersion() });
   });
 
   // Redirect root to admin dashboard
